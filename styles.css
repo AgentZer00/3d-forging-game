@@ -139,12 +139,12 @@ body {
     height: 100%;
     background: linear-gradient(90deg, #ff3300, #ff6600, #ffaa00);
     width: 0%;
-    transition: width 0.3s;
+    transition: width 0.3s, background 0.3s;
 }
 
 .quality-fill {
     height: 100%;
-    background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+    background: linear-gradient(90deg, #00aa00, #00ff00);
     width: 0%;
     transition: width 0.3s;
 }
@@ -246,6 +246,90 @@ body {
     display: none;
 }
 
+/* Crosshair */
+#crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 200;
+    display: none;
+}
+
+.crosshair-dot {
+    width: 6px;
+    height: 6px;
+    background: #fff;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+}
+
+.crosshair-ring {
+    width: 30px;
+    height: 30px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transition: border-color 0.2s, transform 0.2s;
+    box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+#crosshair:hover .crosshair-ring,
+.crosshair-active .crosshair-ring {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+/* Message animation */
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+    15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
+}
+
+#game-message {
+    animation: fadeInOut 2s ease-in-out forwards;
+}
+
+/* Click to start prompt */
+.click-prompt {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.85);
+    padding: 30px 50px;
+    border-radius: 15px;
+    border: 3px solid #ff6600;
+    text-align: center;
+    z-index: 150;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+.click-prompt h2 {
+    color: #ffaa00;
+    font-size: 1.8rem;
+    margin-bottom: 10px;
+}
+
+.click-prompt p {
+    color: #fff;
+    font-size: 1.1rem;
+}
+
+@keyframes pulse {
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 102, 0, 0.5); }
+    50% { box-shadow: 0 0 40px rgba(255, 102, 0, 0.8); }
+}
+
 /* Responsive adjustments */
 @media (max-width: 1200px) {
     .top-panel {
@@ -258,6 +342,34 @@ body {
     }
 }
 
+@media (max-width: 768px) {
+    .loading-content h1 {
+        font-size: 2rem;
+    }
+
+    .loading-bar {
+        width: 280px;
+    }
+
+    .top-panel {
+        padding: 10px;
+        gap: 10px;
+    }
+
+    .stat-group {
+        min-width: 150px;
+    }
+
+    .controls-panel {
+        display: none;
+    }
+
+    .instructions {
+        max-width: 280px;
+        padding: 15px;
+    }
+}
+
 /* Cursor styles */
 body {
     cursor: crosshair;
@@ -266,4 +378,98 @@ body {
 /* Hide UI in VR mode */
 body.vr-mode #ui-overlay {
     display: none;
+}
+
+/* Heat indicator glow effect */
+.heating-indicator {
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, #ff3300, #ff6600);
+    padding: 10px 30px;
+    border-radius: 20px;
+    font-weight: bold;
+    animation: heatPulse 0.5s ease-in-out infinite;
+    z-index: 150;
+}
+
+@keyframes heatPulse {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+}
+
+/* Quality milestone indicators */
+.quality-milestone {
+    position: absolute;
+    height: 100%;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.5);
+    top: 0;
+}
+
+.quality-milestone.q50 { left: 50%; }
+.quality-milestone.q80 { left: 80%; background: #00ff00; }
+
+/* Tooltip styles */
+.tooltip {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.9);
+    color: #fff;
+    padding: 8px 12px;
+    border-radius: 5px;
+    font-size: 0.8rem;
+    pointer-events: none;
+    z-index: 300;
+    white-space: nowrap;
+}
+
+/* Hand glow when near interaction */
+.hand-glow {
+    filter: drop-shadow(0 0 10px rgba(255, 170, 0, 0.8));
+}
+
+/* Success screen overlay */
+.success-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 50, 0, 0.3);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 500;
+    animation: successFade 3s ease-out forwards;
+}
+
+@keyframes successFade {
+    0% { opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+.success-content {
+    text-align: center;
+    animation: successPop 0.5s ease-out;
+}
+
+@keyframes successPop {
+    0% { transform: scale(0.5); opacity: 0; }
+    70% { transform: scale(1.1); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.success-content h1 {
+    font-size: 4rem;
+    color: #00ff00;
+    text-shadow: 0 0 30px #00ff00;
+    margin-bottom: 20px;
+}
+
+.success-content p {
+    font-size: 1.5rem;
+    color: #fff;
 }

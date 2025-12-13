@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Immersive 3D Forging Simulator - VR Ready</title>
+    <title>Blacksmith's Forge - 3D Forging Simulator</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div id="loading-screen">
         <div class="loading-content">
-            <h1>🔨 Blacksmith's Forge 🔥</h1>
+            <h1>Blacksmith's Forge</h1>
             <div class="loading-bar">
                 <div class="loading-progress" id="loadingProgress"></div>
             </div>
@@ -20,7 +20,7 @@
     <div id="ui-overlay">
         <div class="top-panel">
             <div class="stat-group">
-                <h3>🔥 Forge Temperature</h3>
+                <h3>Forge Temperature</h3>
                 <div class="temp-bar">
                     <div class="temp-fill" id="forgeTemp"></div>
                 </div>
@@ -28,7 +28,7 @@
             </div>
 
             <div class="stat-group">
-                <h3>🔨 Metal Temperature</h3>
+                <h3>Metal Temperature</h3>
                 <div class="temp-bar metal">
                     <div class="temp-fill" id="metalTemp"></div>
                 </div>
@@ -36,7 +36,7 @@
             </div>
 
             <div class="stat-group">
-                <h3>⭐ Quality</h3>
+                <h3>Blade Quality</h3>
                 <div class="quality-bar">
                     <div class="quality-fill" id="qualityBar"></div>
                 </div>
@@ -45,38 +45,53 @@
         </div>
 
         <div class="controls-panel">
-            <h3>🎮 Controls</h3>
+            <h3>Controls</h3>
             <div class="control-list">
-                <p><strong>WASD/Arrows:</strong> Move camera</p>
+                <p><strong>WASD:</strong> Move around</p>
                 <p><strong>Mouse:</strong> Look around</p>
-                <p><strong>Left Click:</strong> Swing hammer / Pick up tools</p>
-                <p><strong>E:</strong> Heat metal in forge</p>
-                <p><strong>Q:</strong> Quench metal in water</p>
+                <p><strong>Left Click / Space:</strong> Swing hammer</p>
+                <p><strong>E:</strong> Heat metal (near forge)</p>
+                <p><strong>Q:</strong> Quench metal (near water)</p>
                 <p><strong>R:</strong> Reset metal</p>
-                <p><strong>VR Button:</strong> Enter VR Mode</p>
+                <p><strong>ESC:</strong> Release mouse</p>
             </div>
         </div>
 
         <div class="instructions">
-            <h2>⚒️ How to Forge</h2>
+            <h2>How to Forge a Blade</h2>
             <ol>
-                <li>Press <strong>E</strong> to heat metal in the forge until it glows red-hot (800-1200°C)</li>
-                <li>Move to the anvil and click to hammer the metal while hot</li>
-                <li>Strike precisely to increase quality</li>
-                <li>Reheat as needed - metal cools over time</li>
-                <li>Press <strong>Q</strong> to quench in water when satisfied</li>
-                <li>Create the perfect blade!</li>
+                <li>Walk to the <strong>forge</strong> (left side) and press <strong>E</strong> to heat your metal</li>
+                <li>Watch the temperature - aim for <strong>800-1100°C</strong> (green bar)</li>
+                <li>Walk to the <strong>anvil</strong> (center) and <strong>click</strong> to hammer</li>
+                <li>Strike while the metal is hot for maximum quality</li>
+                <li>Reheat when the metal cools (bar turns orange/red)</li>
+                <li>When quality reaches <strong>80%+</strong>, press <strong>Q</strong> near the water barrel to finish!</li>
             </ol>
         </div>
 
-        <button id="vrButton" class="vr-button">Enter VR Mode 🥽</button>
+        <div class="click-prompt" id="clickPrompt">
+            <h2>Click to Start</h2>
+            <p>Click anywhere to begin forging</p>
+        </div>
+
+        <button id="vrButton" class="vr-button">Enter VR Mode</button>
     </div>
 
     <div id="game-container"></div>
 
-    <!-- Three.js and VR libraries -->
+    <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
     <script src="game.js"></script>
+    <script>
+        // Hide click prompt once pointer is locked
+        document.addEventListener('pointerlockchange', function() {
+            const prompt = document.getElementById('clickPrompt');
+            if (document.pointerLockElement) {
+                prompt.style.display = 'none';
+            } else {
+                prompt.style.display = 'block';
+            }
+        });
+    </script>
 </body>
 </html>
