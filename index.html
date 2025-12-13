@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Immersive 3D Forging Simulator - VR Ready</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="loading-screen">
+        <div class="loading-content">
+            <h1>🔨 Blacksmith's Forge 🔥</h1>
+            <div class="loading-bar">
+                <div class="loading-progress" id="loadingProgress"></div>
+            </div>
+            <p id="loadingText">Heating the forge...</p>
+        </div>
+    </div>
+
+    <div id="ui-overlay">
+        <div class="top-panel">
+            <div class="stat-group">
+                <h3>🔥 Forge Temperature</h3>
+                <div class="temp-bar">
+                    <div class="temp-fill" id="forgeTemp"></div>
+                </div>
+                <span id="forgeTempText">1200°C</span>
+            </div>
+
+            <div class="stat-group">
+                <h3>🔨 Metal Temperature</h3>
+                <div class="temp-bar metal">
+                    <div class="temp-fill" id="metalTemp"></div>
+                </div>
+                <span id="metalTempText">20°C</span>
+            </div>
+
+            <div class="stat-group">
+                <h3>⭐ Quality</h3>
+                <div class="quality-bar">
+                    <div class="quality-fill" id="qualityBar"></div>
+                </div>
+                <span id="qualityText">0%</span>
+            </div>
+        </div>
+
+        <div class="controls-panel">
+            <h3>🎮 Controls</h3>
+            <div class="control-list">
+                <p><strong>WASD/Arrows:</strong> Move camera</p>
+                <p><strong>Mouse:</strong> Look around</p>
+                <p><strong>Left Click:</strong> Swing hammer / Pick up tools</p>
+                <p><strong>E:</strong> Heat metal in forge</p>
+                <p><strong>Q:</strong> Quench metal in water</p>
+                <p><strong>R:</strong> Reset metal</p>
+                <p><strong>VR Button:</strong> Enter VR Mode</p>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h2>⚒️ How to Forge</h2>
+            <ol>
+                <li>Press <strong>E</strong> to heat metal in the forge until it glows red-hot (800-1200°C)</li>
+                <li>Move to the anvil and click to hammer the metal while hot</li>
+                <li>Strike precisely to increase quality</li>
+                <li>Reheat as needed - metal cools over time</li>
+                <li>Press <strong>Q</strong> to quench in water when satisfied</li>
+                <li>Create the perfect blade!</li>
+            </ol>
+        </div>
+
+        <button id="vrButton" class="vr-button">Enter VR Mode 🥽</button>
+    </div>
+
+    <div id="game-container"></div>
+
+    <!-- Three.js and VR libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

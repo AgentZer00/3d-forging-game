@@ -1,0 +1,42 @@
+{
+  "name": "3d-forging-game",
+  "version": "1.0.0",
+  "description": "An immersive first-person 3D blacksmith forging simulator with full VR support and hand tracking",
+  "main": "index.html",
+  "scripts": {
+    "start": "npx http-server -p 8080 -o",
+    "dev": "npx live-server --port=8080"
+  },
+  "keywords": [
+    "3d",
+    "game",
+    "forging",
+    "blacksmith",
+    "vr",
+    "webxr",
+    "threejs",
+    "immersive",
+    "first-person",
+    "simulator"
+  ],
+  "author": "3D Forging Game Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AgentZer00/3d-forging-game.git"
+  },
+  "bugs": {
+    "url": "https://github.com/AgentZer00/3d-forging-game/issues"
+  },
+  "homepage": "https://github.com/AgentZer00/3d-forging-game#readme",
+  "engines": {
+    "node": ">=12.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Edge versions"
+  ]
+}

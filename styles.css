@@ -1,0 +1,269 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+}
+
+#game-container {
+    width: 100vw;
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+}
+
+/* Loading Screen */
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, #1a0a00 0%, #4a1a0a 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+    transition: opacity 0.5s;
+}
+
+#loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-content {
+    text-align: center;
+    padding: 2rem;
+}
+
+.loading-content h1 {
+    font-size: 3rem;
+    margin-bottom: 2rem;
+    text-shadow: 0 0 20px #ff6600;
+    animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+    0%, 100% { text-shadow: 0 0 20px #ff6600, 0 0 30px #ff3300; }
+    50% { text-shadow: 0 0 40px #ff6600, 0 0 60px #ff3300; }
+}
+
+.loading-bar {
+    width: 400px;
+    height: 30px;
+    background: #333;
+    border-radius: 15px;
+    overflow: hidden;
+    border: 2px solid #ff6600;
+    margin: 0 auto;
+}
+
+.loading-progress {
+    height: 100%;
+    background: linear-gradient(90deg, #ff3300, #ff6600, #ffaa00);
+    width: 0%;
+    transition: width 0.3s;
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+#loadingText {
+    margin-top: 1rem;
+    font-size: 1.2rem;
+    color: #ffaa00;
+}
+
+/* UI Overlay */
+#ui-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 100;
+}
+
+#ui-overlay > * {
+    pointer-events: auto;
+}
+
+.top-panel {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 30px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    border-radius: 15px;
+    border: 2px solid #ff6600;
+    backdrop-filter: blur(10px);
+}
+
+.stat-group {
+    text-align: center;
+    min-width: 200px;
+}
+
+.stat-group h3 {
+    margin-bottom: 10px;
+    font-size: 1rem;
+    color: #ffaa00;
+}
+
+.temp-bar, .quality-bar {
+    width: 100%;
+    height: 25px;
+    background: #222;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid #555;
+    margin-bottom: 5px;
+}
+
+.temp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff3300, #ff6600, #ffaa00);
+    width: 0%;
+    transition: width 0.3s;
+}
+
+.quality-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00ff00, #ffff00, #ff0000);
+    width: 0%;
+    transition: width 0.3s;
+}
+
+.stat-group span {
+    font-weight: bold;
+    color: #fff;
+    font-size: 0.9rem;
+}
+
+/* Controls Panel */
+.controls-panel {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 15px 20px;
+    border-radius: 10px;
+    border: 2px solid #ff6600;
+    backdrop-filter: blur(10px);
+    max-width: 300px;
+}
+
+.controls-panel h3 {
+    margin-bottom: 10px;
+    color: #ffaa00;
+}
+
+.control-list p {
+    margin: 5px 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
+.control-list strong {
+    color: #ffaa00;
+}
+
+/* Instructions */
+.instructions {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 20px;
+    border-radius: 10px;
+    border: 2px solid #ff6600;
+    backdrop-filter: blur(10px);
+    max-width: 400px;
+}
+
+.instructions h2 {
+    margin-bottom: 15px;
+    color: #ffaa00;
+    font-size: 1.3rem;
+}
+
+.instructions ol {
+    margin-left: 20px;
+}
+
+.instructions li {
+    margin: 8px 0;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.instructions strong {
+    color: #ffaa00;
+}
+
+/* VR Button */
+.vr-button {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    padding: 15px 30px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #ff3300, #ff6600);
+    border: 3px solid #ffaa00;
+    border-radius: 10px;
+    color: #fff;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 5px 20px rgba(255, 102, 0, 0.5);
+}
+
+.vr-button:hover {
+    transform: scale(1.05);
+    box-shadow: 0 8px 30px rgba(255, 102, 0, 0.8);
+}
+
+.vr-button:active {
+    transform: scale(0.95);
+}
+
+.vr-button.hidden {
+    display: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+    .top-panel {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .instructions, .controls-panel {
+        font-size: 0.8rem;
+    }
+}
+
+/* Cursor styles */
+body {
+    cursor: crosshair;
+}
+
+/* Hide UI in VR mode */
+body.vr-mode #ui-overlay {
+    display: none;
+}
