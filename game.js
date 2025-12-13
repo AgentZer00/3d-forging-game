@@ -71,6 +71,21 @@ class ForgingGame {
         // Hand animation
         this.handBobTime = 0;
         this.targetHandRotation = { x: 0, y: 0 };
+        this.handSway = { x: 0, y: 0 };
+        this.mouseTargetPos = { x: 0, y: 0 };
+
+        // VR-style hand physics for desktop
+        this.rightHandFingers = [];
+        this.leftHandFingers = [];
+        this.fingerCurlProgress = 0;
+        this.targetFingerCurl = 0;
+
+        // Screen shake
+        this.screenShake = { x: 0, y: 0, intensity: 0 };
+
+        // Hand IK targets
+        this.rightHandTarget = new THREE.Vector3();
+        this.leftHandTarget = new THREE.Vector3();
 
         // Audio context
         this.audioContext = null;
@@ -120,13 +135,15 @@ class ForgingGame {
 
     setupScene() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x1a0a00);
-        this.scene.fog = new THREE.Fog(0x1a0a00, 5, 20);
+        // DARKER, more atmospheric background
+        this.scene.background = new THREE.Color(0x0a0500);
+        // Denser fog for more mystery and depth
+        this.scene.fog = new THREE.Fog(0x0a0500, 3, 15);
     }
 
     setupCamera() {
         this.camera = new THREE.PerspectiveCamera(
-            75,
+            80, // Slightly wider FOV for more immersive VR-like feel
             window.innerWidth / window.innerHeight,
             0.1,
             1000
@@ -136,42 +153,80 @@ class ForgingGame {
     }
 
     setupRenderer() {
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            powerPreference: 'high-performance'
+        });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap at 2x for performance
+
+        // ENHANCED rendering settings for better visuals
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+
+        // Tone mapping for more realistic lighting (HDR-like)
+        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        this.renderer.toneMappingExposure = 1.2; // Slightly brighter
+
+        // Enable physically correct lighting
+        this.renderer.physicallyCorrectLights = true;
+
         this.renderer.xr.enabled = true;
         document.getElementById('game-container').appendChild(this.renderer.domElement);
     }
 
     setupLights() {
-        // Ambient light
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.4);
+        // ENHANCED LIGHTING - Much more dramatic!
+
+        // Lower ambient light for more contrast
+        const ambientLight = new THREE.AmbientLight(0x201510, 0.25);
         this.scene.add(ambientLight);
 
-        // Forge light (orange/red glow)
-        const forgeLight = new THREE.PointLight(0xff4400, 2, 10);
-        forgeLight.position.set(-2, 1, 0);
+        // MAIN: Forge light (intense orange/red glow) - THE STAR!
+        const forgeLight = new THREE.PointLight(0xff3300, 4.5, 12);
+        forgeLight.position.set(-2.5, 1.2, -1.2);
         forgeLight.castShadow = true;
+        forgeLight.shadow.mapSize.width = 2048;
+        forgeLight.shadow.mapSize.height = 2048;
+        forgeLight.shadow.bias = -0.001;
         this.scene.add(forgeLight);
         this.forgeLight = forgeLight;
 
-        // Workshop overhead light
-        const overheadLight = new THREE.DirectionalLight(0xffffcc, 0.5);
-        overheadLight.position.set(0, 5, 0);
+        // Secondary forge light (for better glow around opening)
+        const forgeLightSecondary = new THREE.PointLight(0xff5500, 2, 5);
+        forgeLightSecondary.position.set(-2.5, 0.9, -0.8);
+        this.scene.add(forgeLightSecondary);
+        this.forgeLightSecondary = forgeLightSecondary;
+
+        // Anvil spotlight - focused task lighting
+        const anvilLight = new THREE.SpotLight(0xffd9aa, 1.5);
+        anvilLight.position.set(0.5, 3.5, 0.5);
+        anvilLight.target.position.set(0, 1, 0);
+        anvilLight.angle = Math.PI / 8;
+        anvilLight.penumbra = 0.6;
+        anvilLight.decay = 2;
+        anvilLight.castShadow = true;
+        anvilLight.shadow.mapSize.width = 2048;
+        anvilLight.shadow.mapSize.height = 2048;
+        this.scene.add(anvilLight);
+        this.scene.add(anvilLight.target);
+
+        // Dim overhead fill light (softer)
+        const overheadLight = new THREE.DirectionalLight(0x443322, 0.3);
+        overheadLight.position.set(2, 5, 3);
         overheadLight.castShadow = true;
         overheadLight.shadow.mapSize.width = 2048;
         overheadLight.shadow.mapSize.height = 2048;
+        overheadLight.shadow.camera.left = -8;
+        overheadLight.shadow.camera.right = 8;
+        overheadLight.shadow.camera.top = 8;
+        overheadLight.shadow.camera.bottom = -8;
         this.scene.add(overheadLight);
 
-        // Spotlight on anvil
-        const anvilLight = new THREE.SpotLight(0xffffff, 1);
-        anvilLight.position.set(0, 3, 0);
-        anvilLight.angle = Math.PI / 6;
-        anvilLight.penumbra = 0.5;
-        anvilLight.castShadow = true;
-        this.scene.add(anvilLight);
+        // Rim light (backlight for depth)
+        const rimLight = new THREE.DirectionalLight(0x6688ff, 0.2);
+        rimLight.position.set(-3, 2, -5);
+        this.scene.add(rimLight);
     }
 
     setupVR() {
@@ -287,7 +342,7 @@ class ForgingGame {
         palm.castShadow = true;
         handGroup.add(palm);
 
-        // Fingers
+        // Fingers - store references for animation
         const fingerGeometry = new THREE.CylinderGeometry(0.012, 0.01, 0.08, 8);
         const fingerPositions = [
             { x: -0.028, z: -0.08 },
@@ -296,11 +351,14 @@ class ForgingGame {
             { x: 0.028, z: -0.08 }
         ];
 
+        const fingers = [];
         fingerPositions.forEach((pos, index) => {
             const finger = new THREE.Mesh(fingerGeometry, skinMaterial);
             finger.position.set(pos.x, 0, pos.z);
             finger.rotation.x = Math.PI / 2 - 0.4; // Slightly curved
             finger.castShadow = true;
+            finger.userData.baseRotation = finger.rotation.clone();
+            fingers.push(finger);
             handGroup.add(finger);
         });
 
@@ -311,7 +369,12 @@ class ForgingGame {
         thumb.position.set(thumbX, 0, -0.02);
         thumb.rotation.set(Math.PI / 2, side === 'right' ? 0.5 : -0.5, 0);
         thumb.castShadow = true;
+        thumb.userData.baseRotation = thumb.rotation.clone();
+        fingers.push(thumb);
         handGroup.add(thumb);
+
+        // Store finger references
+        handGroup.userData.fingers = fingers;
 
         // Wrist/Arm stub
         const wristGeometry = new THREE.CylinderGeometry(0.035, 0.04, 0.15, 8);
@@ -819,37 +882,81 @@ class ForgingGame {
     }
 
     createParticleSystems() {
-        // Spark particles
+        // ENHANCED Spark particles - MORE SPARKS!
         const sparkGeometry = new THREE.BufferGeometry();
-        const sparkCount = 100;
+        const sparkCount = 250; // 2.5x more sparks!
         const sparkPositions = new Float32Array(sparkCount * 3);
         const sparkVelocities = [];
+        const sparkLifetimes = [];
 
         for (let i = 0; i < sparkCount; i++) {
             sparkPositions[i * 3] = 0;
             sparkPositions[i * 3 + 1] = 0;
             sparkPositions[i * 3 + 2] = 0;
             sparkVelocities.push(new THREE.Vector3());
+            sparkLifetimes.push(0);
         }
 
         sparkGeometry.setAttribute('position', new THREE.BufferAttribute(sparkPositions, 3));
 
         const sparkMaterial = new THREE.PointsMaterial({
-            color: 0xffaa00,
-            size: 0.05,
+            color: 0xffdd33, // Brighter, more yellow-orange
+            size: 0.08, // Bigger sparks
             transparent: true,
-            opacity: 0
+            opacity: 0,
+            blending: THREE.AdditiveBlending // Additive blending for glow
         });
 
         const sparks = new THREE.Points(sparkGeometry, sparkMaterial);
         this.scene.add(sparks);
-        this.sparkSystem = { points: sparks, velocities: sparkVelocities, active: false };
+        this.sparkSystem = {
+            points: sparks,
+            velocities: sparkVelocities,
+            lifetimes: sparkLifetimes,
+            active: false
+        };
 
         // Smoke particles from forge
         this.createSmokeParticles();
 
-        // Fire particles in forge
+        // Fire particles in forge  - ENHANCED
         this.createFireParticles();
+
+        // NEW: Ember particles (glowing bits that float around forge)
+        this.createEmberParticles();
+    }
+
+    createEmberParticles() {
+        const emberGeometry = new THREE.BufferGeometry();
+        const emberCount = 30;
+        const emberPositions = new Float32Array(emberCount * 3);
+        const emberVelocities = [];
+
+        for (let i = 0; i < emberCount; i++) {
+            // Random positions around forge
+            emberPositions[i * 3] = -2.5 + (Math.random() - 0.5) * 2;
+            emberPositions[i * 3 + 1] = 0.8 + Math.random() * 1.5;
+            emberPositions[i * 3 + 2] = -1.5 + (Math.random() - 0.5) * 2;
+            emberVelocities.push(new THREE.Vector3(
+                (Math.random() - 0.5) * 0.02,
+                0.03 + Math.random() * 0.02,
+                (Math.random() - 0.5) * 0.02
+            ));
+        }
+
+        emberGeometry.setAttribute('position', new THREE.BufferAttribute(emberPositions, 3));
+
+        const emberMaterial = new THREE.PointsMaterial({
+            color: 0xff4400,
+            size: 0.06,
+            transparent: true,
+            opacity: 0.6,
+            blending: THREE.AdditiveBlending
+        });
+
+        const embers = new THREE.Points(emberGeometry, emberMaterial);
+        this.scene.add(embers);
+        this.emberSystem = { points: embers, velocities: emberVelocities };
     }
 
     createSmokeParticles() {
@@ -886,23 +993,45 @@ class ForgingGame {
 
     createFireParticles() {
         const fireGeometry = new THREE.BufferGeometry();
-        const fireCount = 40;
+        const fireCount = 80; // Double the fire particles!
         const firePositions = new Float32Array(fireCount * 3);
+        const fireColors = new Float32Array(fireCount * 3);
 
         for (let i = 0; i < fireCount; i++) {
             firePositions[i * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
             firePositions[i * 3 + 1] = 0.8 + Math.random() * 0.4;
             firePositions[i * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
+
+            // Vary fire colors (red to yellow-white)
+            const colorVariation = Math.random();
+            if (colorVariation > 0.7) {
+                // Hot white-yellow core
+                fireColors[i * 3] = 1.0;
+                fireColors[i * 3 + 1] = 0.9;
+                fireColors[i * 3 + 2] = 0.3;
+            } else if (colorVariation > 0.4) {
+                // Orange
+                fireColors[i * 3] = 1.0;
+                fireColors[i * 3 + 1] = 0.4;
+                fireColors[i * 3 + 2] = 0.0;
+            } else {
+                // Red
+                fireColors[i * 3] = 1.0;
+                fireColors[i * 3 + 1] = 0.15;
+                fireColors[i * 3 + 2] = 0.0;
+            }
         }
 
         fireGeometry.setAttribute('position', new THREE.BufferAttribute(firePositions, 3));
+        fireGeometry.setAttribute('color', new THREE.BufferAttribute(fireColors, 3));
 
         const fireMaterial = new THREE.PointsMaterial({
-            color: 0xff4400,
-            size: 0.12,
+            size: 0.15, // Bigger fire particles
             transparent: true,
-            opacity: 0.8,
-            blending: THREE.AdditiveBlending
+            opacity: 0.85,
+            blending: THREE.AdditiveBlending,
+            vertexColors: true, // Use per-particle colors
+            depthWrite: false
         });
 
         const fire = new THREE.Points(fireGeometry, fireMaterial);
@@ -930,11 +1059,15 @@ class ForgingGame {
                 } else {
                     this.onHammerSwing();
                 }
+                // Curl fingers when clicking
+                this.targetFingerCurl = 1;
             }
         });
 
         window.addEventListener('mouseup', () => {
             this.mouseDown = false;
+            // Uncurl fingers when releasing
+            this.targetFingerCurl = 0;
         });
 
         window.addEventListener('mousemove', (e) => {
@@ -946,6 +1079,10 @@ class ForgingGame {
                 this.cameraRotation.y -= e.movementX * 0.002;
                 this.cameraRotation.x -= e.movementY * 0.002;
                 this.cameraRotation.x = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, this.cameraRotation.x));
+
+                // VR-style hand tracking - hands follow mouse movement
+                this.mouseTargetPos.x = this.mouse.x * 0.15;
+                this.mouseTargetPos.y = this.mouse.y * 0.1;
             }
         });
 
@@ -1144,6 +1281,8 @@ class ForgingGame {
         if (this.metalTemperature < 600) {
             this.showMessage('Metal too cold! Heat it in the forge first (Press E near forge)', '#ff6666');
             this.playErrorSound();
+            // Small shake for failed strike
+            this.addScreenShake(0.003);
             return;
         }
 
@@ -1161,21 +1300,36 @@ class ForgingGame {
             const qualityIncrease = tempQuality / 10;
             this.quality = Math.min(100, this.quality + qualityIncrease);
             this.showMessage('Perfect strike! +' + qualityIncrease.toFixed(1) + '% quality', '#00ff00', 800);
+            // Bigger shake for perfect strike
+            this.addScreenShake(0.012);
         } else if (this.metalTemperature >= 600) {
             // Acceptable range - minimal quality gain
             const qualityIncrease = 1;
             this.quality = Math.min(100, this.quality + qualityIncrease);
             this.showMessage('Strike! +' + qualityIncrease.toFixed(1) + '% (heat metal more for better results)', '#ffaa00', 800);
+            // Medium shake for normal strike
+            this.addScreenShake(0.008);
         }
 
-        // Deform held metal
-        if (this.heldMetal && this.metalDeformationCount < 25) {
-            this.heldMetal.scale.y *= 0.96;
-            this.heldMetal.scale.x *= 1.02;
-            this.heldMetal.scale.z *= 1.01;
-        } else if (this.metalDeformationCount >= 25) {
-            // Reset deformation for continued forging
-            this.heldMetal.scale.set(1.3, 0.6, 1.2);
+        // ENHANCED metal deformation - more realistic forging
+        if (this.heldMetal && this.metalDeformationCount < 30) {
+            // Flatten more dramatically
+            this.heldMetal.scale.y *= 0.94;
+            this.heldMetal.scale.x *= 1.025;
+            this.heldMetal.scale.z *= 1.015;
+
+            // Add slight rotation for more organic feel
+            this.heldMetal.rotation.y += (Math.random() - 0.5) * 0.02;
+            this.heldMetal.rotation.z += (Math.random() - 0.5) * 0.01;
+
+            // Subtle position offset (being worked on anvil)
+            const wobble = (Math.random() - 0.5) * 0.003;
+            this.heldMetal.position.x = wobble;
+        } else if (this.metalDeformationCount >= 30) {
+            // Reset deformation for continued forging (blade taking shape)
+            this.heldMetal.scale.set(1.5, 0.5, 1.3);
+            this.heldMetal.rotation.set(0, 0, 0);
+            this.heldMetal.position.set(0, -0.28, 0);
             this.metalDeformationCount = 0;
         }
 
@@ -1193,21 +1347,33 @@ class ForgingGame {
         this.metalTemperature = Math.max(20, this.metalTemperature - 20);
     }
 
+    addScreenShake(intensity) {
+        this.screenShake.intensity = intensity;
+        this.screenShake.x = (Math.random() - 0.5) * intensity;
+        this.screenShake.y = (Math.random() - 0.5) * intensity;
+    }
+
     createSparks(position) {
         this.sparkSystem.active = true;
         const positions = this.sparkSystem.points.geometry.attributes.position.array;
 
         for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
-            positions[i * 3] = position.x + (Math.random() - 0.5) * 0.2;
-            positions[i * 3 + 1] = position.y;
-            positions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 0.2;
+            // Spread sparks in a wider area
+            positions[i * 3] = position.x + (Math.random() - 0.5) * 0.3;
+            positions[i * 3 + 1] = position.y + Math.random() * 0.1;
+            positions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 0.3;
 
-            // Random velocity for sparks - more dramatic
+            // ENHANCED: Much more dramatic velocities!
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 0.15 + Math.random() * 0.25; // Faster sparks
             this.sparkSystem.velocities[i].set(
-                (Math.random() - 0.5) * 0.15,
-                Math.random() * 0.2 + 0.05,
-                (Math.random() - 0.5) * 0.15
+                Math.cos(angle) * speed,
+                Math.random() * 0.35 + 0.15, // More upward velocity
+                Math.sin(angle) * speed
             );
+
+            // Random lifetime for variation
+            this.sparkSystem.lifetimes[i] = Math.random() * 0.3 + 0.7;
         }
 
         this.sparkSystem.points.material.opacity = 1;
@@ -1372,30 +1538,68 @@ class ForgingGame {
     }
 
     updateParticles(deltaTime) {
-        // Update sparks
+        // ENHANCED Update sparks with better physics
         if (this.sparkSystem.active) {
             const positions = this.sparkSystem.points.geometry.attributes.position.array;
             let allDead = true;
 
             for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
-                positions[i * 3] += this.sparkSystem.velocities[i].x;
-                positions[i * 3 + 1] += this.sparkSystem.velocities[i].y;
-                positions[i * 3 + 2] += this.sparkSystem.velocities[i].z;
+                // Update position
+                positions[i * 3] += this.sparkSystem.velocities[i].x * deltaTime * 60;
+                positions[i * 3 + 1] += this.sparkSystem.velocities[i].y * deltaTime * 60;
+                positions[i * 3 + 2] += this.sparkSystem.velocities[i].z * deltaTime * 60;
 
-                // Gravity
-                this.sparkSystem.velocities[i].y -= 0.008;
+                // Enhanced gravity (stronger)
+                this.sparkSystem.velocities[i].y -= 0.015;
 
-                if (positions[i * 3 + 1] > 0) {
+                // Air resistance
+                this.sparkSystem.velocities[i].multiplyScalar(0.98);
+
+                // Lifetime
+                this.sparkSystem.lifetimes[i] -= deltaTime;
+
+                if (positions[i * 3 + 1] > 0 && this.sparkSystem.lifetimes[i] > 0) {
                     allDead = false;
+                }
+
+                // Bounce off floor
+                if (positions[i * 3 + 1] < 0.05) {
+                    this.sparkSystem.velocities[i].y *= -0.4; // Bounce with energy loss
+                    positions[i * 3 + 1] = 0.05;
                 }
             }
 
             this.sparkSystem.points.geometry.attributes.position.needsUpdate = true;
-            this.sparkSystem.points.material.opacity *= 0.92;
+            this.sparkSystem.points.material.opacity *= 0.94; // Slower fade
 
             if (allDead || this.sparkSystem.points.material.opacity < 0.01) {
                 this.sparkSystem.active = false;
             }
+        }
+
+        // Update ember particles (floating embers around forge)
+        if (this.emberSystem) {
+            const emberPositions = this.emberSystem.points.geometry.attributes.position.array;
+            for (let i = 0; i < this.emberSystem.velocities.length; i++) {
+                emberPositions[i * 3] += this.emberSystem.velocities[i].x;
+                emberPositions[i * 3 + 1] += this.emberSystem.velocities[i].y;
+                emberPositions[i * 3 + 2] += this.emberSystem.velocities[i].z;
+
+                // Swirl motion
+                emberPositions[i * 3] += Math.sin(Date.now() * 0.001 + i) * 0.002;
+                emberPositions[i * 3 + 2] += Math.cos(Date.now() * 0.001 + i) * 0.002;
+
+                // Reset when too high
+                if (emberPositions[i * 3 + 1] > 3.5) {
+                    emberPositions[i * 3] = -2.5 + (Math.random() - 0.5) * 2;
+                    emberPositions[i * 3 + 1] = 0.8;
+                    emberPositions[i * 3 + 2] = -1.5 + (Math.random() - 0.5) * 2;
+                }
+            }
+            this.emberSystem.points.geometry.attributes.position.needsUpdate = true;
+
+            // Pulsing glow effect
+            this.emberSystem.points.material.opacity = 0.6 + Math.sin(Date.now() * 0.003) * 0.2;
         }
 
         // Update smoke
@@ -1414,13 +1618,14 @@ class ForgingGame {
         }
         this.smokeSystem.points.geometry.attributes.position.needsUpdate = true;
 
-        // Animate fire particles
+        // Animate fire particles with MORE CHAOS!
         const firePositions = this.fireSystem.geometry.attributes.position.array;
         for (let i = 0; i < firePositions.length / 3; i++) {
-            firePositions[i * 3 + 1] += Math.random() * 0.015;
-            firePositions[i * 3] += (Math.random() - 0.5) * 0.005;
+            firePositions[i * 3 + 1] += Math.random() * 0.02 + 0.01;
+            firePositions[i * 3] += (Math.random() - 0.5) * 0.01;
+            firePositions[i * 3 + 2] += (Math.random() - 0.5) * 0.01;
 
-            if (firePositions[i * 3 + 1] > 1.6) {
+            if (firePositions[i * 3 + 1] > 1.8) {
                 firePositions[i * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
                 firePositions[i * 3 + 1] = 0.8;
                 firePositions[i * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
@@ -1544,33 +1749,59 @@ class ForgingGame {
         if (this.hammerSwingProgress >= 1) {
             // End of swing - reset
             this.handHammer.rotation.x = this.hammerRestRotation.x;
+            this.handHammer.rotation.z = this.hammerRestRotation.z || 0;
             this.handHammer.position.y = -0.08;
             this.rightHand.position.y = -0.4;
+            this.rightHand.position.z = -0.5;
             this.isHammerSwinging = false;
             this.hammerSwingProgress = 0;
         } else {
             const progress = this.hammerSwingProgress;
 
             if (progress < 0.3) {
-                // Wind up
+                // Wind up - raise hammer back
                 const windupProgress = progress / 0.3;
-                this.handHammer.rotation.x = this.hammerRestRotation.x - windupProgress * 0.8;
-                this.rightHand.position.y = -0.4 + windupProgress * 0.15;
+                const easeOut = 1 - Math.pow(1 - windupProgress, 3); // Ease out cubic
+
+                this.handHammer.rotation.x = this.hammerRestRotation.x - easeOut * 1.0;
+                this.handHammer.rotation.z = easeOut * -0.3; // Slight twist
+                this.rightHand.position.y = -0.4 + easeOut * 0.2;
+                this.rightHand.position.z = -0.5 - easeOut * 0.1; // Pull back
+                this.rightHand.rotation.z = easeOut * -0.15; // Shoulder rotation
+
             } else if (progress < 0.6) {
-                // Strike down
+                // Strike down - POWER!
                 const strikeProgress = (progress - 0.3) / 0.3;
-                this.handHammer.rotation.x = this.hammerRestRotation.x - 0.8 + strikeProgress * 1.5;
-                this.rightHand.position.y = -0.4 + 0.15 - strikeProgress * 0.25;
+                const easeIn = strikeProgress * strikeProgress * strikeProgress; // Ease in cubic (fast)
+
+                this.handHammer.rotation.x = this.hammerRestRotation.x - 1.0 + easeIn * 2.2;
+                this.handHammer.rotation.z = -0.3 + easeIn * 0.5; // Twist back
+                this.rightHand.position.y = -0.4 + 0.2 - easeIn * 0.35; // Slam down
+                this.rightHand.position.z = -0.5 - 0.1 + easeIn * 0.15; // Forward thrust
+                this.rightHand.rotation.z = -0.15 + easeIn * 0.25; // Follow through
 
                 // Check for hit at middle of strike
                 if (strikeProgress > 0.4 && strikeProgress < 0.6 && !this.hasHitThisSwing) {
                     this.checkHammerHit();
                 }
+
+                // Add impact recoil when hitting
+                if (this.hasHitThisSwing && strikeProgress > 0.5) {
+                    const recoil = Math.sin((strikeProgress - 0.5) * 20) * 0.02;
+                    this.handHammer.position.y = -0.08 + recoil;
+                    this.handHammer.rotation.x += recoil;
+                }
+
             } else {
-                // Return
+                // Return to rest position
                 const returnProgress = (progress - 0.6) / 0.4;
-                this.handHammer.rotation.x = this.hammerRestRotation.x + 0.7 - returnProgress * 0.7;
-                this.rightHand.position.y = -0.4 - 0.1 + returnProgress * 0.1;
+                const easeOut = 1 - Math.pow(1 - returnProgress, 2); // Ease out quad
+
+                this.handHammer.rotation.x = this.hammerRestRotation.x + 1.2 - easeOut * 1.2;
+                this.handHammer.rotation.z = 0.2 - easeOut * 0.2;
+                this.rightHand.position.y = -0.4 - 0.15 + easeOut * 0.15;
+                this.rightHand.position.z = -0.5 + 0.05 - easeOut * 0.05;
+                this.rightHand.rotation.z = 0.1 - easeOut * 0.1;
             }
         }
     }
@@ -1580,25 +1811,77 @@ class ForgingGame {
 
         this.handBobTime += deltaTime;
 
-        // Subtle idle bob animation
-        const bobAmount = 0.005;
-        const bobSpeed = 2;
+        // VR-STYLE HAND PHYSICS FOR DESKTOP
 
-        if (!this.isHammerSwinging) {
-            // Bob both hands
-            const bobY = Math.sin(this.handBobTime * bobSpeed) * bobAmount;
-            const bobX = Math.cos(this.handBobTime * bobSpeed * 0.7) * bobAmount * 0.5;
+        // 1. Finger curl animation (when clicking/gripping)
+        this.fingerCurlProgress += (this.targetFingerCurl - this.fingerCurlProgress) * 8 * deltaTime;
 
-            this.rightHand.position.y = -0.4 + bobY;
-            this.rightHand.position.x = 0.35 + bobX;
-
-            this.leftHand.position.y = -0.45 + bobY;
-            this.leftHand.position.x = -0.35 - bobX;
+        // Animate right hand fingers
+        if (this.rightHand && this.rightHand.userData.fingers) {
+            this.rightHand.userData.fingers.forEach((finger, index) => {
+                const baseRot = finger.userData.baseRotation;
+                const curlAmount = this.fingerCurlProgress * (index === 4 ? 0.3 : 0.5); // Thumb curls less
+                finger.rotation.x = baseRot.x + curlAmount;
+            });
         }
 
-        // Subtle breathing/sway for left hand (holding metal)
-        const swayAmount = 0.003;
-        this.leftHand.rotation.z = Math.sin(this.handBobTime * 1.5) * swayAmount;
+        // Animate left hand fingers
+        if (this.leftHand && this.leftHand.userData.fingers) {
+            this.leftHand.userData.fingers.forEach((finger, index) => {
+                const baseRot = finger.userData.baseRotation;
+                const curlAmount = this.fingerCurlProgress * (index === 4 ? 0.3 : 0.4); // Always slightly gripping tongs
+                finger.rotation.x = baseRot.x + 0.2 + curlAmount;
+            });
+        }
+
+        // 2. Mouse-based hand tracking (IK-style)
+        const mouseInfluence = 5 * deltaTime;
+        this.handSway.x += (this.mouseTargetPos.x - this.handSway.x) * mouseInfluence;
+        this.handSway.y += (this.mouseTargetPos.y - this.handSway.y) * mouseInfluence;
+
+        // 3. Movement-based hand sway (when walking)
+        const velocity = new THREE.Vector3(
+            this.keys['w'] || this.keys['s'] ? 1 : 0,
+            0,
+            this.keys['a'] || this.keys['d'] ? 1 : 0
+        );
+        const movementIntensity = velocity.length();
+
+        // 4. Idle bob animation (breathing)
+        const bobAmount = 0.005;
+        const bobSpeed = 2;
+        const bobY = Math.sin(this.handBobTime * bobSpeed) * bobAmount;
+        const bobX = Math.cos(this.handBobTime * bobSpeed * 0.7) * bobAmount * 0.5;
+
+        // 5. Walking sway
+        const walkSwayAmount = 0.02;
+        const walkBob = Math.sin(this.handBobTime * 6) * movementIntensity * walkSwayAmount;
+        const walkSwayX = Math.cos(this.handBobTime * 6) * movementIntensity * walkSwayAmount * 0.7;
+
+        if (!this.isHammerSwinging) {
+            // RIGHT HAND (Hammer) - more dramatic movement
+            this.rightHand.position.y = -0.4 + bobY + walkBob * 1.5 + this.handSway.y;
+            this.rightHand.position.x = 0.35 + bobX + walkSwayX + this.handSway.x * 0.8;
+            this.rightHand.position.z = -0.5 + this.handSway.y * 0.5;
+
+            // Rotate hand based on mouse movement (aiming)
+            this.rightHand.rotation.y = -0.3 + this.handSway.x * 0.5;
+            this.rightHand.rotation.x = this.handSway.y * 0.3;
+            this.rightHand.rotation.z = Math.sin(this.handBobTime * 1.5) * 0.01 + walkSwayX * 0.5;
+
+            // LEFT HAND (Tongs with metal) - steadier, holding metal carefully
+            this.leftHand.position.y = -0.45 + bobY * 0.8 + walkBob - this.handSway.y * 0.3;
+            this.leftHand.position.x = -0.35 - bobX + walkSwayX * 0.5 - this.handSway.x * 0.6;
+            this.leftHand.position.z = -0.5 - this.handSway.y * 0.3;
+
+            this.leftHand.rotation.y = 0.3 - this.handSway.x * 0.3;
+            this.leftHand.rotation.x = -this.handSway.y * 0.2;
+            this.leftHand.rotation.z = Math.sin(this.handBobTime * 1.5) * 0.01 - walkSwayX * 0.3;
+        }
+
+        // 6. Breathing motion
+        const breatheAmount = Math.sin(this.handBobTime * 1.2) * 0.002;
+        this.handsGroup.position.y = breatheAmount;
     }
 
     updateProximityChecks() {
@@ -1670,10 +1953,24 @@ class ForgingGame {
         this.cameraPosition.x = Math.max(this.cameraBounds.minX, Math.min(this.cameraBounds.maxX, this.cameraPosition.x));
         this.cameraPosition.z = Math.max(this.cameraBounds.minZ, Math.min(this.cameraBounds.maxZ, this.cameraPosition.z));
 
-        // Apply camera position and rotation
+        // Apply screen shake (decays over time)
+        if (this.screenShake.intensity > 0) {
+            this.screenShake.intensity *= 0.85; // Decay
+            if (this.screenShake.intensity < 0.001) {
+                this.screenShake.intensity = 0;
+                this.screenShake.x = 0;
+                this.screenShake.y = 0;
+            } else {
+                // Randomize shake direction for more dynamic feel
+                this.screenShake.x += (Math.random() - 0.5) * this.screenShake.intensity * 0.5;
+                this.screenShake.y += (Math.random() - 0.5) * this.screenShake.intensity * 0.5;
+            }
+        }
+
+        // Apply camera position and rotation with screen shake
         this.camera.position.copy(this.cameraPosition);
-        this.camera.rotation.y = this.cameraRotation.y;
-        this.camera.rotation.x = this.cameraRotation.x;
+        this.camera.rotation.y = this.cameraRotation.y + this.screenShake.x;
+        this.camera.rotation.x = this.cameraRotation.x + this.screenShake.y;
     }
 
     hideLoadingScreen() {
@@ -1709,6 +2006,15 @@ class ForgingGame {
                         loadingScreen.classList.add('hidden');
                         setTimeout(() => {
                             loadingScreen.style.display = 'none';
+
+                            // Show welcome message with new features
+                            setTimeout(() => {
+                                this.showMessage(
+                                    '🔥 VR-STYLE HANDS NOW ON DESKTOP! 🔥\nMove mouse to aim • Watch your fingers curl • Feel the hammer recoil!\nClick to forge!',
+                                    '#ffaa00',
+                                    5000
+                                );
+                            }, 500);
                         }, 500);
                     }
                 }, 300);
@@ -1728,13 +2034,26 @@ class ForgingGame {
             this.updateCamera(deltaTime);
             this.updateUI();
 
-            // Animate forge light flickering
+            // ENHANCED forge light flickering - more realistic fire behavior
             const time = Date.now() * 0.001;
-            this.forgeLight.intensity = 2 + Math.sin(time * 3) * 0.3 + Math.sin(time * 7) * 0.1;
+            const flicker1 = Math.sin(time * 3.7) * 0.4;
+            const flicker2 = Math.sin(time * 7.3) * 0.25;
+            const flicker3 = Math.sin(time * 11.1) * 0.15;
+            const flicker4 = Math.sin(time * 2.1) * 0.35;
 
-            // Animate forge opening emissive
+            this.forgeLight.intensity = 4.5 + flicker1 + flicker2 + flicker3;
+
+            // Secondary forge light flickers differently
+            if (this.forgeLightSecondary) {
+                this.forgeLightSecondary.intensity = 2 + flicker2 * 2 + flicker4;
+            }
+
+            // Animate forge opening emissive with complex pattern
             if (this.forgeOpening) {
-                this.forgeOpening.material.emissiveIntensity = 1.5 + Math.sin(time * 2) * 0.3;
+                this.forgeOpening.material.emissiveIntensity = 1.8 + flicker1 * 0.6 + flicker3;
+                // Subtle color shift
+                const heatPulse = (Math.sin(time * 0.5) + 1) * 0.5;
+                this.forgeOpening.material.emissive.setHSL(0.05 + heatPulse * 0.03, 1, 0.5);
             }
 
             this.renderer.render(this.scene, this.camera);
