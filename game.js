@@ -1,5 +1,5 @@
 // Immersive 3D Forging Game with VR Support
-// Main Game Engine - Completely Revamped with First-Person Hands
+// Main Game Engine - MASSIVELY ENHANCED GRAPHICS & INTERACTION VERSION
 
 class ForgingGame {
     constructor() {
@@ -21,7 +21,7 @@ class ForgingGame {
         this.metal = null;
         this.tongs = null;
 
-        // First-person hands
+        // First-person hands - NOW MUCH MORE PROMINENT
         this.playerHands = null;
         this.rightHand = null;
         this.leftHand = null;
@@ -43,11 +43,13 @@ class ForgingGame {
         this.isHoldingMetal = false;
         this.metalOnAnvil = true;
 
-        // Interaction states
+        // Interaction states - ENHANCED
         this.nearForge = false;
         this.nearAnvil = false;
         this.nearWater = false;
         this.interactionTarget = null;
+        this.isGrabbing = false;
+        this.grabPulse = 0;
 
         // Particles
         this.sparkParticles = [];
@@ -68,7 +70,7 @@ class ForgingGame {
             minZ: -3, maxZ: 4
         };
 
-        // Hand animation
+        // Hand animation - ENHANCED
         this.handBobTime = 0;
         this.targetHandRotation = { x: 0, y: 0 };
         this.handSway = { x: 0, y: 0 };
@@ -80,7 +82,7 @@ class ForgingGame {
         this.fingerCurlProgress = 0;
         this.targetFingerCurl = 0;
 
-        // Screen shake
+        // Screen shake - ENHANCED
         this.screenShake = { x: 0, y: 0, intensity: 0 };
 
         // Hand IK targets
@@ -104,6 +106,24 @@ class ForgingGame {
 
         // Crosshair
         this.crosshair = null;
+
+        // NEW: Post-processing and visual effects
+        this.bloomPass = null;
+        this.composer = null;
+        this.heatDistortion = 0;
+        this.vignetteIntensity = 0.3;
+
+        // NEW: Hand glow effects
+        this.handGlowIntensity = 0;
+        this.interactionGlow = null;
+
+        // NEW: Environmental effects
+        this.dustParticles = null;
+        this.heatWaves = null;
+
+        // NEW: Hit feedback
+        this.impactFlash = 0;
+        this.metalSparks = [];
 
         this.init();
     }
@@ -135,10 +155,28 @@ class ForgingGame {
 
     setupScene() {
         this.scene = new THREE.Scene();
-        // DARKER, more atmospheric background
-        this.scene.background = new THREE.Color(0x0a0500);
-        // Denser fog for more mystery and depth
-        this.scene.fog = new THREE.Fog(0x0a0500, 3, 15);
+        // MUCH DARKER, more dramatic background
+        this.scene.background = new THREE.Color(0x050200);
+        // Denser fog for more mystery and depth - shorter range for more drama
+        this.scene.fog = new THREE.Fog(0x050200, 2, 12);
+
+        // Create impact flash overlay (invisible initially)
+        this.createImpactFlash();
+    }
+
+    createImpactFlash() {
+        // Full-screen flash effect for hammer impacts
+        const flashGeometry = new THREE.PlaneGeometry(100, 100);
+        const flashMaterial = new THREE.MeshBasicMaterial({
+            color: 0xffaa00,
+            transparent: true,
+            opacity: 0,
+            depthTest: false,
+            depthWrite: false
+        });
+        this.impactFlashMesh = new THREE.Mesh(flashGeometry, flashMaterial);
+        this.impactFlashMesh.position.z = -2;
+        this.impactFlashMesh.renderOrder = 999;
     }
 
     setupCamera() {
@@ -155,64 +193,140 @@ class ForgingGame {
     setupRenderer() {
         this.renderer = new THREE.WebGLRenderer({
             antialias: true,
-            powerPreference: 'high-performance'
+            powerPreference: 'high-performance',
+            alpha: false
         });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Cap at 2x for performance
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-        // ENHANCED rendering settings for better visuals
+        // MASSIVELY ENHANCED rendering for dramatic visuals
         this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        // Tone mapping for more realistic lighting (HDR-like)
+        // HDR-like tone mapping - more contrast and drama
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.2; // Slightly brighter
+        this.renderer.toneMappingExposure = 1.5; // Brighter exposure for more contrast
 
         // Enable physically correct lighting
         this.renderer.physicallyCorrectLights = true;
 
+        // Set output encoding for better colors
+        this.renderer.outputEncoding = THREE.sRGBEncoding;
+
         this.renderer.xr.enabled = true;
         document.getElementById('game-container').appendChild(this.renderer.domElement);
+
+        // Create custom render effects layer
+        this.createRenderEffects();
+    }
+
+    createRenderEffects() {
+        // Create a vignette overlay for cinematic effect
+        const vignetteDiv = document.createElement('div');
+        vignetteDiv.id = 'vignette-overlay';
+        vignetteDiv.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 50;
+            background: radial-gradient(ellipse at center,
+                transparent 0%,
+                transparent 40%,
+                rgba(0,0,0,0.3) 80%,
+                rgba(0,0,0,0.6) 100%);
+        `;
+        document.body.appendChild(vignetteDiv);
+        this.vignetteOverlay = vignetteDiv;
+
+        // Create heat wave overlay
+        const heatDiv = document.createElement('div');
+        heatDiv.id = 'heat-overlay';
+        heatDiv.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 49;
+            opacity: 0;
+            background: radial-gradient(ellipse at 30% 50%,
+                rgba(255,100,0,0.15) 0%,
+                transparent 50%);
+            mix-blend-mode: screen;
+            transition: opacity 0.3s;
+        `;
+        document.body.appendChild(heatDiv);
+        this.heatOverlay = heatDiv;
+
+        // Create impact flash overlay
+        const flashDiv = document.createElement('div');
+        flashDiv.id = 'impact-flash';
+        flashDiv.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 60;
+            opacity: 0;
+            background: rgba(255, 170, 0, 0.4);
+            transition: opacity 0.05s;
+        `;
+        document.body.appendChild(flashDiv);
+        this.impactFlashDiv = flashDiv;
     }
 
     setupLights() {
-        // ENHANCED LIGHTING - Much more dramatic!
+        // MASSIVELY ENHANCED LIGHTING - Super dramatic!
 
-        // Lower ambient light for more contrast
-        const ambientLight = new THREE.AmbientLight(0x201510, 0.25);
+        // Very low ambient for maximum contrast
+        const ambientLight = new THREE.AmbientLight(0x100800, 0.15);
         this.scene.add(ambientLight);
 
-        // MAIN: Forge light (intense orange/red glow) - THE STAR!
-        const forgeLight = new THREE.PointLight(0xff3300, 4.5, 12);
+        // MAIN: Forge light (INTENSE orange/red glow) - THE STAR!
+        const forgeLight = new THREE.PointLight(0xff4400, 8, 15);
         forgeLight.position.set(-2.5, 1.2, -1.2);
         forgeLight.castShadow = true;
         forgeLight.shadow.mapSize.width = 2048;
         forgeLight.shadow.mapSize.height = 2048;
         forgeLight.shadow.bias = -0.001;
+        forgeLight.shadow.radius = 4;
         this.scene.add(forgeLight);
         this.forgeLight = forgeLight;
 
-        // Secondary forge light (for better glow around opening)
-        const forgeLightSecondary = new THREE.PointLight(0xff5500, 2, 5);
+        // Secondary forge light (fills the opening)
+        const forgeLightSecondary = new THREE.PointLight(0xff6600, 4, 6);
         forgeLightSecondary.position.set(-2.5, 0.9, -0.8);
         this.scene.add(forgeLightSecondary);
         this.forgeLightSecondary = forgeLightSecondary;
 
-        // Anvil spotlight - focused task lighting
-        const anvilLight = new THREE.SpotLight(0xffd9aa, 1.5);
-        anvilLight.position.set(0.5, 3.5, 0.5);
+        // Third forge light for extra glow depth
+        const forgeLightTertiary = new THREE.PointLight(0xffaa00, 2, 4);
+        forgeLightTertiary.position.set(-2.5, 1.5, -1.0);
+        this.scene.add(forgeLightTertiary);
+        this.forgeLightTertiary = forgeLightTertiary;
+
+        // Anvil spotlight - FOCUSED dramatic task lighting
+        const anvilLight = new THREE.SpotLight(0xffddaa, 3);
+        anvilLight.position.set(0.5, 4, 0.5);
         anvilLight.target.position.set(0, 1, 0);
-        anvilLight.angle = Math.PI / 8;
-        anvilLight.penumbra = 0.6;
+        anvilLight.angle = Math.PI / 6;
+        anvilLight.penumbra = 0.8;
         anvilLight.decay = 2;
         anvilLight.castShadow = true;
         anvilLight.shadow.mapSize.width = 2048;
         anvilLight.shadow.mapSize.height = 2048;
         this.scene.add(anvilLight);
         this.scene.add(anvilLight.target);
+        this.anvilLight = anvilLight;
 
-        // Dim overhead fill light (softer)
-        const overheadLight = new THREE.DirectionalLight(0x443322, 0.3);
+        // Overhead fill light (very dim)
+        const overheadLight = new THREE.DirectionalLight(0x332211, 0.2);
         overheadLight.position.set(2, 5, 3);
         overheadLight.castShadow = true;
         overheadLight.shadow.mapSize.width = 2048;
@@ -223,10 +337,20 @@ class ForgingGame {
         overheadLight.shadow.camera.bottom = -8;
         this.scene.add(overheadLight);
 
-        // Rim light (backlight for depth)
-        const rimLight = new THREE.DirectionalLight(0x6688ff, 0.2);
+        // Cool rim light for dramatic depth
+        const rimLight = new THREE.DirectionalLight(0x4466aa, 0.25);
         rimLight.position.set(-3, 2, -5);
         this.scene.add(rimLight);
+
+        // Water barrel ambient glow
+        const waterLight = new THREE.PointLight(0x4488ff, 0.8, 4);
+        waterLight.position.set(2.5, 0.8, -1);
+        this.scene.add(waterLight);
+        this.waterLight = waterLight;
+
+        // Player hand light (subtle fill for hands visibility)
+        this.handLight = new THREE.PointLight(0xffaa66, 0, 2);
+        this.scene.add(this.handLight);
     }
 
     setupVR() {
@@ -305,69 +429,123 @@ class ForgingGame {
         this.camera.add(this.handsGroup);
         this.scene.add(this.camera);
 
-        // Create right hand (holding hammer)
+        // Add impact flash to camera
+        if (this.impactFlashMesh) {
+            this.camera.add(this.impactFlashMesh);
+        }
+
+        // Create right hand (holding hammer) - NOW MUCH BIGGER AND CLOSER
         this.rightHand = this.createHand('right');
-        this.rightHand.position.set(0.35, -0.4, -0.5);
+        this.rightHand.position.set(0.4, -0.35, -0.45);  // Closer and larger
         this.rightHand.rotation.set(0, -0.3, 0);
+        this.rightHand.scale.set(1.4, 1.4, 1.4);  // 40% bigger hands!
         this.handsGroup.add(this.rightHand);
 
-        // Create left hand (holding tongs with metal)
+        // Create left hand (holding tongs with metal) - NOW MUCH BIGGER
         this.leftHand = this.createHand('left');
-        this.leftHand.position.set(-0.35, -0.45, -0.5);
+        this.leftHand.position.set(-0.38, -0.38, -0.42);  // Closer and larger
         this.leftHand.rotation.set(0, 0.3, 0);
+        this.leftHand.scale.set(1.4, 1.4, 1.4);  // 40% bigger hands!
         this.handsGroup.add(this.leftHand);
 
-        // Create hammer attached to right hand
+        // Create hammer attached to right hand - BIGGER
         this.createHandHammer();
 
         // Create tongs attached to left hand
         this.createHandTongs();
 
-        // Create held metal (attached to tongs)
+        // Create held metal (attached to tongs) - MORE PROMINENT
         this.createHeldMetal();
+
+        // Add hand glow effect meshes
+        this.createHandGlowEffects();
+    }
+
+    createHandGlowEffects() {
+        // Glow effect for right hand (shows when near anvil)
+        const glowGeometry = new THREE.SphereGeometry(0.25, 16, 16);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff8800,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false
+        });
+        this.rightHandGlow = new THREE.Mesh(glowGeometry, glowMaterial);
+        this.rightHandGlow.scale.set(1, 0.6, 0.8);
+        this.rightHand.add(this.rightHandGlow);
+
+        // Glow effect for left hand (shows when holding hot metal)
+        this.leftHandGlow = new THREE.Mesh(glowGeometry.clone(), glowMaterial.clone());
+        this.leftHandGlow.scale.set(0.8, 0.5, 0.6);
+        this.leftHand.add(this.leftHandGlow);
     }
 
     createHand(side) {
         const handGroup = new THREE.Group();
-        const skinColor = 0xffdbac;
+        const skinColor = 0xffccaa;  // Slightly warmer skin tone
         const skinMaterial = new THREE.MeshStandardMaterial({
             color: skinColor,
-            roughness: 0.7,
-            metalness: 0.1
+            roughness: 0.5,  // Smoother for better light catch
+            metalness: 0.05,
+            emissive: 0x331100,
+            emissiveIntensity: 0.1  // Slight self-illumination for visibility
         });
 
-        // Palm
-        const palmGeometry = new THREE.BoxGeometry(0.08, 0.1, 0.12);
+        // Palm - BIGGER and more detailed
+        const palmGeometry = new THREE.BoxGeometry(0.1, 0.12, 0.14);
         const palm = new THREE.Mesh(palmGeometry, skinMaterial);
         palm.castShadow = true;
+        palm.receiveShadow = true;
         handGroup.add(palm);
 
-        // Fingers - store references for animation
-        const fingerGeometry = new THREE.CylinderGeometry(0.012, 0.01, 0.08, 8);
+        // Add palm detail (knuckle bumps)
+        const knuckleGeometry = new THREE.SphereGeometry(0.015, 8, 8);
+        const knucklePositions = [
+            { x: -0.035, y: 0.06, z: -0.06 },
+            { x: -0.012, y: 0.06, z: -0.065 },
+            { x: 0.012, y: 0.06, z: -0.065 },
+            { x: 0.035, y: 0.06, z: -0.06 }
+        ];
+        knucklePositions.forEach(pos => {
+            const knuckle = new THREE.Mesh(knuckleGeometry, skinMaterial);
+            knuckle.position.set(pos.x, pos.y, pos.z);
+            knuckle.scale.set(1, 0.6, 1);
+            handGroup.add(knuckle);
+        });
+
+        // Fingers - BIGGER and store references for animation
+        const fingerGeometry = new THREE.CylinderGeometry(0.016, 0.013, 0.1, 8);
         const fingerPositions = [
-            { x: -0.028, z: -0.08 },
-            { x: -0.009, z: -0.09 },
-            { x: 0.009, z: -0.09 },
-            { x: 0.028, z: -0.08 }
+            { x: -0.035, z: -0.1 },
+            { x: -0.012, z: -0.11 },
+            { x: 0.012, z: -0.11 },
+            { x: 0.035, z: -0.1 }
         ];
 
         const fingers = [];
         fingerPositions.forEach((pos, index) => {
             const finger = new THREE.Mesh(fingerGeometry, skinMaterial);
-            finger.position.set(pos.x, 0, pos.z);
-            finger.rotation.x = Math.PI / 2 - 0.4; // Slightly curved
+            finger.position.set(pos.x, 0.03, pos.z);
+            finger.rotation.x = Math.PI / 2 - 0.5;
             finger.castShadow = true;
             finger.userData.baseRotation = finger.rotation.clone();
             fingers.push(finger);
             handGroup.add(finger);
+
+            // Add fingertip
+            const tipGeometry = new THREE.SphereGeometry(0.013, 8, 8);
+            const tip = new THREE.Mesh(tipGeometry, skinMaterial);
+            tip.position.set(0, -0.05, 0);
+            tip.scale.set(1, 0.8, 1);
+            finger.add(tip);
         });
 
-        // Thumb
-        const thumbGeometry = new THREE.CylinderGeometry(0.014, 0.012, 0.06, 8);
+        // Thumb - BIGGER
+        const thumbGeometry = new THREE.CylinderGeometry(0.018, 0.015, 0.08, 8);
         const thumb = new THREE.Mesh(thumbGeometry, skinMaterial);
-        const thumbX = side === 'right' ? 0.05 : -0.05;
-        thumb.position.set(thumbX, 0, -0.02);
-        thumb.rotation.set(Math.PI / 2, side === 'right' ? 0.5 : -0.5, 0);
+        const thumbX = side === 'right' ? 0.06 : -0.06;
+        thumb.position.set(thumbX, 0.02, -0.02);
+        thumb.rotation.set(Math.PI / 2, side === 'right' ? 0.6 : -0.6, 0);
         thumb.castShadow = true;
         thumb.userData.baseRotation = thumb.rotation.clone();
         fingers.push(thumb);
@@ -376,25 +554,40 @@ class ForgingGame {
         // Store finger references
         handGroup.userData.fingers = fingers;
 
-        // Wrist/Arm stub
-        const wristGeometry = new THREE.CylinderGeometry(0.035, 0.04, 0.15, 8);
+        // Wrist/Arm stub - BIGGER
+        const wristGeometry = new THREE.CylinderGeometry(0.045, 0.05, 0.18, 10);
         const wrist = new THREE.Mesh(wristGeometry, skinMaterial);
-        wrist.position.set(0, 0.02, 0.1);
+        wrist.position.set(0, 0.02, 0.12);
         wrist.rotation.x = Math.PI / 2;
         wrist.castShadow = true;
         handGroup.add(wrist);
 
-        // Sleeve
-        const sleeveGeometry = new THREE.CylinderGeometry(0.045, 0.05, 0.1, 8);
+        // Sleeve - leather blacksmith glove cuff
+        const sleeveGeometry = new THREE.CylinderGeometry(0.055, 0.065, 0.15, 10);
         const sleeveMaterial = new THREE.MeshStandardMaterial({
-            color: 0x4a3525,
-            roughness: 0.9
+            color: 0x3a2515,
+            roughness: 0.85,
+            metalness: 0.1,
+            emissive: 0x1a0a05,
+            emissiveIntensity: 0.15
         });
         const sleeve = new THREE.Mesh(sleeveGeometry, sleeveMaterial);
-        sleeve.position.set(0, 0.02, 0.18);
+        sleeve.position.set(0, 0.02, 0.22);
         sleeve.rotation.x = Math.PI / 2;
         sleeve.castShadow = true;
         handGroup.add(sleeve);
+
+        // Add leather strap detail on sleeve
+        const strapGeometry = new THREE.TorusGeometry(0.058, 0.008, 8, 24);
+        const strapMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2a1a0a,
+            roughness: 0.7,
+            metalness: 0.3
+        });
+        const strap = new THREE.Mesh(strapGeometry, strapMaterial);
+        strap.position.set(0, 0.02, 0.17);
+        strap.rotation.x = Math.PI / 2;
+        handGroup.add(strap);
 
         return handGroup;
     }
@@ -402,30 +595,70 @@ class ForgingGame {
     createHandHammer() {
         const hammerGroup = new THREE.Group();
 
-        // Hammer head
-        const headGeometry = new THREE.BoxGeometry(0.1, 0.07, 0.15);
+        // Hammer head - BIGGER and more detailed
+        const headGeometry = new THREE.BoxGeometry(0.14, 0.1, 0.2);
         const hammerMaterial = new THREE.MeshStandardMaterial({
-            color: 0x555555,
-            roughness: 0.3,
-            metalness: 0.9
+            color: 0x666666,
+            roughness: 0.25,
+            metalness: 0.95,
+            emissive: 0x111111,
+            emissiveIntensity: 0.1
         });
         const head = new THREE.Mesh(headGeometry, hammerMaterial);
         head.castShadow = true;
+        head.receiveShadow = true;
         hammerGroup.add(head);
 
-        // Hammer handle
-        const handleGeometry = new THREE.CylinderGeometry(0.015, 0.018, 0.35, 8);
+        // Add hammer face (striking surface)
+        const faceGeometry = new THREE.CylinderGeometry(0.045, 0.045, 0.02, 16);
+        const faceMaterial = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            roughness: 0.15,
+            metalness: 1
+        });
+        const face = new THREE.Mesh(faceGeometry, faceMaterial);
+        face.rotation.x = Math.PI / 2;
+        face.position.z = -0.11;
+        hammerGroup.add(face);
+
+        // Add wedge detail at top
+        const wedgeGeometry = new THREE.BoxGeometry(0.02, 0.12, 0.06);
+        const wedgeMaterial = new THREE.MeshStandardMaterial({
+            color: 0x444444,
+            roughness: 0.4,
+            metalness: 0.8
+        });
+        const wedge = new THREE.Mesh(wedgeGeometry, wedgeMaterial);
+        wedge.position.y = 0.06;
+        hammerGroup.add(wedge);
+
+        // Hammer handle - BIGGER with grip texture
+        const handleGeometry = new THREE.CylinderGeometry(0.02, 0.025, 0.4, 10);
         const handleMaterial = new THREE.MeshStandardMaterial({
-            color: 0x654321,
-            roughness: 0.7
+            color: 0x5a3a1a,
+            roughness: 0.6,
+            metalness: 0.1,
+            emissive: 0x1a0a00,
+            emissiveIntensity: 0.1
         });
         const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-        handle.position.y = 0.2;
+        handle.position.y = 0.25;
         handle.castShadow = true;
         hammerGroup.add(handle);
 
+        // Add grip wrapping
+        const gripGeometry = new THREE.CylinderGeometry(0.024, 0.024, 0.12, 8);
+        const gripMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2a1a0a,
+            roughness: 0.9,
+            metalness: 0
+        });
+        const grip = new THREE.Mesh(gripGeometry, gripMaterial);
+        grip.position.y = 0.38;
+        hammerGroup.add(grip);
+
         // Position hammer in right hand
-        hammerGroup.position.set(0, -0.08, -0.1);
+        hammerGroup.position.set(0, -0.1, -0.12);
         hammerGroup.rotation.x = -Math.PI / 4;
         this.rightHand.add(hammerGroup);
         this.handHammer = hammerGroup;
@@ -486,22 +719,46 @@ class ForgingGame {
     }
 
     createHeldMetal() {
-        // Metal piece held by tongs
-        const metalGeometry = new THREE.BoxGeometry(0.12, 0.025, 0.04);
+        // Metal piece held by tongs - MUCH BIGGER AND MORE VISIBLE
+        const metalGeometry = new THREE.BoxGeometry(0.2, 0.04, 0.06);
         const metalMaterial = new THREE.MeshStandardMaterial({
-            color: 0x8a8a8a,
-            roughness: 0.4,
-            metalness: 0.9
+            color: 0x9a9a9a,
+            roughness: 0.3,
+            metalness: 0.95,
+            emissive: 0x000000,
+            emissiveIntensity: 0
         });
         const heldMetal = new THREE.Mesh(metalGeometry, metalMaterial);
-        heldMetal.position.set(0, -0.28, 0);
+        heldMetal.position.set(0, -0.32, 0);
         heldMetal.castShadow = true;
         heldMetal.receiveShadow = true;
+
+        // Add edge bevels for realism
+        const bevelGeometry = new THREE.BoxGeometry(0.21, 0.01, 0.065);
+        const bevelMaterial = new THREE.MeshStandardMaterial({
+            color: 0x888888,
+            roughness: 0.35,
+            metalness: 0.9
+        });
+        const topBevel = new THREE.Mesh(bevelGeometry, bevelMaterial);
+        topBevel.position.y = 0.025;
+        heldMetal.add(topBevel);
+
+        // Add a subtle glow mesh for hot metal
+        const glowGeometry = new THREE.BoxGeometry(0.22, 0.05, 0.07);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff4400,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false
+        });
+        this.metalGlowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
+        heldMetal.add(this.metalGlowMesh);
 
         this.handTongs.add(heldMetal);
         this.heldMetal = heldMetal;
         this.heldMetalMaterial = metalMaterial;
-        this.heldMetal.visible = true; // Metal is always held
+        this.heldMetal.visible = true;
     }
 
     createCrosshair() {
@@ -993,31 +1250,36 @@ class ForgingGame {
 
     createFireParticles() {
         const fireGeometry = new THREE.BufferGeometry();
-        const fireCount = 80; // Double the fire particles!
+        const fireCount = 150; // LOTS more fire particles!
         const firePositions = new Float32Array(fireCount * 3);
         const fireColors = new Float32Array(fireCount * 3);
 
         for (let i = 0; i < fireCount; i++) {
-            firePositions[i * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
-            firePositions[i * 3 + 1] = 0.8 + Math.random() * 0.4;
-            firePositions[i * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
+            firePositions[i * 3] = -2.5 + (Math.random() - 0.5) * 1.0;
+            firePositions[i * 3 + 1] = 0.6 + Math.random() * 0.6;
+            firePositions[i * 3 + 2] = -1.1 + (Math.random() - 0.5) * 0.6;
 
-            // Vary fire colors (red to yellow-white)
+            // Vary fire colors (red to white-hot)
             const colorVariation = Math.random();
-            if (colorVariation > 0.7) {
-                // Hot white-yellow core
+            if (colorVariation > 0.85) {
+                // White-hot core
                 fireColors[i * 3] = 1.0;
-                fireColors[i * 3 + 1] = 0.9;
-                fireColors[i * 3 + 2] = 0.3;
-            } else if (colorVariation > 0.4) {
+                fireColors[i * 3 + 1] = 1.0;
+                fireColors[i * 3 + 2] = 0.7;
+            } else if (colorVariation > 0.6) {
+                // Yellow
+                fireColors[i * 3] = 1.0;
+                fireColors[i * 3 + 1] = 0.8;
+                fireColors[i * 3 + 2] = 0.2;
+            } else if (colorVariation > 0.3) {
                 // Orange
                 fireColors[i * 3] = 1.0;
                 fireColors[i * 3 + 1] = 0.4;
                 fireColors[i * 3 + 2] = 0.0;
             } else {
-                // Red
+                // Deep red
                 fireColors[i * 3] = 1.0;
-                fireColors[i * 3 + 1] = 0.15;
+                fireColors[i * 3 + 1] = 0.1;
                 fireColors[i * 3 + 2] = 0.0;
             }
         }
@@ -1026,17 +1288,35 @@ class ForgingGame {
         fireGeometry.setAttribute('color', new THREE.BufferAttribute(fireColors, 3));
 
         const fireMaterial = new THREE.PointsMaterial({
-            size: 0.15, // Bigger fire particles
+            size: 0.2, // BIGGER fire particles
             transparent: true,
-            opacity: 0.85,
+            opacity: 0.95,
             blending: THREE.AdditiveBlending,
-            vertexColors: true, // Use per-particle colors
+            vertexColors: true,
             depthWrite: false
         });
 
         const fire = new THREE.Points(fireGeometry, fireMaterial);
         this.scene.add(fire);
         this.fireSystem = fire;
+
+        // Create additional glow layer for forge
+        this.createForgeGlow();
+    }
+
+    createForgeGlow() {
+        // Large glow sphere around forge
+        const glowGeometry = new THREE.SphereGeometry(1.5, 16, 16);
+        const glowMaterial = new THREE.MeshBasicMaterial({
+            color: 0xff4400,
+            transparent: true,
+            opacity: 0.15,
+            depthWrite: false,
+            side: THREE.BackSide
+        });
+        this.forgeGlowSphere = new THREE.Mesh(glowGeometry, glowMaterial);
+        this.forgeGlowSphere.position.set(-2.5, 0.9, -1.2);
+        this.scene.add(this.forgeGlowSphere);
     }
 
     setupEventListeners() {
@@ -1281,8 +1561,7 @@ class ForgingGame {
         if (this.metalTemperature < 600) {
             this.showMessage('Metal too cold! Heat it in the forge first (Press E near forge)', '#ff6666');
             this.playErrorSound();
-            // Small shake for failed strike
-            this.addScreenShake(0.003);
+            this.addScreenShake(0.005);
             return;
         }
 
@@ -1299,41 +1578,49 @@ class ForgingGame {
             const tempQuality = Math.max(0, 100 - (tempDiff / 5));
             const qualityIncrease = tempQuality / 10;
             this.quality = Math.min(100, this.quality + qualityIncrease);
-            this.showMessage('Perfect strike! +' + qualityIncrease.toFixed(1) + '% quality', '#00ff00', 800);
-            // Bigger shake for perfect strike
-            this.addScreenShake(0.012);
+            this.showMessage('PERFECT STRIKE! +' + qualityIncrease.toFixed(1) + '% quality', '#00ff00', 800);
+            // MASSIVE shake for perfect strike
+            this.addScreenShake(0.025);
+            // Flash effect
+            this.triggerImpactFlash(0.5);
+            // Bright anvil light pulse
+            if (this.anvilLight) {
+                this.anvilLight.intensity = 8;
+            }
         } else if (this.metalTemperature >= 600) {
             // Acceptable range - minimal quality gain
             const qualityIncrease = 1;
             this.quality = Math.min(100, this.quality + qualityIncrease);
             this.showMessage('Strike! +' + qualityIncrease.toFixed(1) + '% (heat metal more for better results)', '#ffaa00', 800);
             // Medium shake for normal strike
-            this.addScreenShake(0.008);
+            this.addScreenShake(0.015);
+            this.triggerImpactFlash(0.3);
         }
 
-        // ENHANCED metal deformation - more realistic forging
+        // ENHANCED metal deformation - more dramatic forging
         if (this.heldMetal && this.metalDeformationCount < 30) {
             // Flatten more dramatically
-            this.heldMetal.scale.y *= 0.94;
-            this.heldMetal.scale.x *= 1.025;
-            this.heldMetal.scale.z *= 1.015;
+            this.heldMetal.scale.y *= 0.92;
+            this.heldMetal.scale.x *= 1.03;
+            this.heldMetal.scale.z *= 1.02;
 
-            // Add slight rotation for more organic feel
-            this.heldMetal.rotation.y += (Math.random() - 0.5) * 0.02;
-            this.heldMetal.rotation.z += (Math.random() - 0.5) * 0.01;
+            // More dramatic rotation for impact feel
+            this.heldMetal.rotation.y += (Math.random() - 0.5) * 0.04;
+            this.heldMetal.rotation.z += (Math.random() - 0.5) * 0.02;
 
-            // Subtle position offset (being worked on anvil)
-            const wobble = (Math.random() - 0.5) * 0.003;
+            // Position jitter
+            const wobble = (Math.random() - 0.5) * 0.005;
             this.heldMetal.position.x = wobble;
         } else if (this.metalDeformationCount >= 30) {
             // Reset deformation for continued forging (blade taking shape)
-            this.heldMetal.scale.set(1.5, 0.5, 1.3);
+            this.heldMetal.scale.set(1.8, 0.4, 1.5);
             this.heldMetal.rotation.set(0, 0, 0);
-            this.heldMetal.position.set(0, -0.28, 0);
+            this.heldMetal.position.set(0, -0.32, 0);
             this.metalDeformationCount = 0;
+            this.showMessage('Blade taking shape!', '#ffdd00', 1200);
         }
 
-        // Create sparks at anvil position
+        // Create MASSIVE sparks at anvil position
         this.createSparks(new THREE.Vector3(
             this.anvil.position.x,
             this.anvil.position.y + 0.2,
@@ -1344,7 +1631,22 @@ class ForgingGame {
         this.playHammerSound();
 
         // Cool metal from working
-        this.metalTemperature = Math.max(20, this.metalTemperature - 20);
+        this.metalTemperature = Math.max(20, this.metalTemperature - 15);
+    }
+
+    triggerImpactFlash(intensity) {
+        // Trigger screen flash effect
+        if (this.impactFlashDiv) {
+            this.impactFlashDiv.style.opacity = intensity;
+            setTimeout(() => {
+                this.impactFlashDiv.style.opacity = 0;
+            }, 50);
+        }
+
+        // Flash the impact mesh if present
+        if (this.impactFlashMesh && this.impactFlashMesh.material) {
+            this.impactFlashMesh.material.opacity = intensity * 0.3;
+        }
     }
 
     addScreenShake(intensity) {
@@ -1358,25 +1660,27 @@ class ForgingGame {
         const positions = this.sparkSystem.points.geometry.attributes.position.array;
 
         for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
-            // Spread sparks in a wider area
-            positions[i * 3] = position.x + (Math.random() - 0.5) * 0.3;
-            positions[i * 3 + 1] = position.y + Math.random() * 0.1;
-            positions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 0.3;
+            // Tight spawn point at impact
+            positions[i * 3] = position.x + (Math.random() - 0.5) * 0.15;
+            positions[i * 3 + 1] = position.y + Math.random() * 0.05;
+            positions[i * 3 + 2] = position.z + (Math.random() - 0.5) * 0.15;
 
-            // ENHANCED: Much more dramatic velocities!
+            // MASSIVE DRAMATIC VELOCITIES - sparks fly everywhere!
             const angle = Math.random() * Math.PI * 2;
-            const speed = 0.15 + Math.random() * 0.25; // Faster sparks
+            const elevation = Math.random() * Math.PI * 0.4 + 0.1;
+            const speed = 0.25 + Math.random() * 0.4; // MUCH faster sparks
             this.sparkSystem.velocities[i].set(
-                Math.cos(angle) * speed,
-                Math.random() * 0.35 + 0.15, // More upward velocity
-                Math.sin(angle) * speed
+                Math.cos(angle) * Math.cos(elevation) * speed,
+                Math.sin(elevation) * speed + 0.3, // Strong upward burst
+                Math.sin(angle) * Math.cos(elevation) * speed
             );
 
-            // Random lifetime for variation
-            this.sparkSystem.lifetimes[i] = Math.random() * 0.3 + 0.7;
+            // Longer lifetime for trailing effect
+            this.sparkSystem.lifetimes[i] = Math.random() * 0.5 + 0.8;
         }
 
         this.sparkSystem.points.material.opacity = 1;
+        this.sparkSystem.points.material.size = 0.12;  // Bigger sparks
         this.sparkSystem.points.geometry.attributes.position.needsUpdate = true;
     }
 
@@ -1676,27 +1980,58 @@ class ForgingGame {
 
         const temp = this.metalTemperature;
         let color;
+        let emissiveColor;
         let emissiveIntensity = 0;
+        let glowOpacity = 0;
 
         if (temp < 400) {
             color = new THREE.Color(0x8a8a8a);
+            emissiveColor = new THREE.Color(0x000000);
         } else if (temp < 600) {
-            color = new THREE.Color(0xaa5555);
-            emissiveIntensity = (temp - 400) / 400;
+            color = new THREE.Color(0xcc6644);
+            emissiveColor = new THREE.Color(0x661100);
+            emissiveIntensity = (temp - 400) / 300;
+            glowOpacity = 0.1;
         } else if (temp < 800) {
-            color = new THREE.Color(0xff4444);
-            emissiveIntensity = 0.5 + (temp - 600) / 400;
+            color = new THREE.Color(0xff5533);
+            emissiveColor = new THREE.Color(0xff2200);
+            emissiveIntensity = 0.8 + (temp - 600) / 300;
+            glowOpacity = 0.25;
         } else if (temp < 1000) {
-            color = new THREE.Color(0xff6633);
-            emissiveIntensity = 1.0 + (temp - 800) / 400;
+            color = new THREE.Color(0xff7744);
+            emissiveColor = new THREE.Color(0xff4400);
+            emissiveIntensity = 1.5 + (temp - 800) / 300;
+            glowOpacity = 0.4;
         } else {
-            color = new THREE.Color(0xffaa44);
-            emissiveIntensity = 1.5;
+            color = new THREE.Color(0xffbb66);
+            emissiveColor = new THREE.Color(0xffaa00);
+            emissiveIntensity = 2.5;
+            glowOpacity = 0.55;
         }
 
         this.heldMetalMaterial.color = color;
-        this.heldMetalMaterial.emissive = color;
-        this.heldMetalMaterial.emissiveIntensity = emissiveIntensity * 0.5;
+        this.heldMetalMaterial.emissive = emissiveColor;
+        this.heldMetalMaterial.emissiveIntensity = emissiveIntensity;
+
+        // Update glow mesh
+        if (this.metalGlowMesh && this.metalGlowMesh.material) {
+            this.metalGlowMesh.material.opacity = glowOpacity;
+            // Pulsing glow
+            const pulse = Math.sin(Date.now() * 0.005) * 0.1;
+            this.metalGlowMesh.material.opacity = Math.max(0, glowOpacity + pulse);
+        }
+
+        // Update left hand glow based on metal temp
+        if (this.leftHandGlow && this.leftHandGlow.material) {
+            this.leftHandGlow.material.opacity = glowOpacity * 0.5;
+            this.leftHandGlow.material.color.setHex(temp > 800 ? 0xff6600 : 0xff4400);
+        }
+
+        // Update heat overlay when near forge
+        if (this.heatOverlay) {
+            const heatOpacity = this.nearForge ? 0.3 + (temp / 1200) * 0.4 : 0;
+            this.heatOverlay.style.opacity = heatOpacity;
+        }
     }
 
     updateUI() {
@@ -1953,17 +2288,22 @@ class ForgingGame {
         this.cameraPosition.x = Math.max(this.cameraBounds.minX, Math.min(this.cameraBounds.maxX, this.cameraPosition.x));
         this.cameraPosition.z = Math.max(this.cameraBounds.minZ, Math.min(this.cameraBounds.maxZ, this.cameraPosition.z));
 
-        // Apply screen shake (decays over time)
+        // Apply DRAMATIC screen shake (decays over time)
         if (this.screenShake.intensity > 0) {
-            this.screenShake.intensity *= 0.85; // Decay
-            if (this.screenShake.intensity < 0.001) {
+            this.screenShake.intensity *= 0.88; // Slightly slower decay for more impact
+            if (this.screenShake.intensity < 0.0005) {
                 this.screenShake.intensity = 0;
                 this.screenShake.x = 0;
                 this.screenShake.y = 0;
             } else {
-                // Randomize shake direction for more dynamic feel
-                this.screenShake.x += (Math.random() - 0.5) * this.screenShake.intensity * 0.5;
-                this.screenShake.y += (Math.random() - 0.5) * this.screenShake.intensity * 0.5;
+                // Dramatic high-frequency shake
+                const freq = 25; // High frequency shake
+                const time = Date.now() * 0.001;
+                this.screenShake.x = Math.sin(time * freq) * this.screenShake.intensity;
+                this.screenShake.y = Math.cos(time * freq * 1.3) * this.screenShake.intensity * 0.7;
+                // Add random noise
+                this.screenShake.x += (Math.random() - 0.5) * this.screenShake.intensity * 0.3;
+                this.screenShake.y += (Math.random() - 0.5) * this.screenShake.intensity * 0.2;
             }
         }
 
@@ -2007,12 +2347,12 @@ class ForgingGame {
                         setTimeout(() => {
                             loadingScreen.style.display = 'none';
 
-                            // Show welcome message with new features
+                            // Show welcome message
                             setTimeout(() => {
                                 this.showMessage(
-                                    '🔥 VR-STYLE HANDS NOW ON DESKTOP! 🔥\nMove mouse to aim • Watch your fingers curl • Feel the hammer recoil!\nClick to forge!',
+                                    'CLICK TO START FORGING\nWASD to move | E to heat | Click to strike',
                                     '#ffaa00',
-                                    5000
+                                    4000
                                 );
                             }, 500);
                         }, 500);
@@ -2033,31 +2373,92 @@ class ForgingGame {
             this.updateProximityChecks();
             this.updateCamera(deltaTime);
             this.updateUI();
+            this.updateVisualEffects(deltaTime);
 
-            // ENHANCED forge light flickering - more realistic fire behavior
+            // MASSIVELY ENHANCED forge light flickering
             const time = Date.now() * 0.001;
-            const flicker1 = Math.sin(time * 3.7) * 0.4;
-            const flicker2 = Math.sin(time * 7.3) * 0.25;
-            const flicker3 = Math.sin(time * 11.1) * 0.15;
-            const flicker4 = Math.sin(time * 2.1) * 0.35;
+            const flicker1 = Math.sin(time * 3.7) * 0.6;
+            const flicker2 = Math.sin(time * 7.3) * 0.4;
+            const flicker3 = Math.sin(time * 11.1) * 0.25;
+            const flicker4 = Math.sin(time * 2.1) * 0.5;
+            const flicker5 = Math.sin(time * 17.3) * 0.2;
 
-            this.forgeLight.intensity = 4.5 + flicker1 + flicker2 + flicker3;
+            this.forgeLight.intensity = 8 + flicker1 + flicker2 + flicker3 + flicker5;
 
             // Secondary forge light flickers differently
             if (this.forgeLightSecondary) {
-                this.forgeLightSecondary.intensity = 2 + flicker2 * 2 + flicker4;
+                this.forgeLightSecondary.intensity = 4 + flicker2 * 2 + flicker4;
+            }
+
+            // Tertiary forge light
+            if (this.forgeLightTertiary) {
+                this.forgeLightTertiary.intensity = 2 + flicker3 * 3 + flicker1 * 0.5;
             }
 
             // Animate forge opening emissive with complex pattern
             if (this.forgeOpening) {
-                this.forgeOpening.material.emissiveIntensity = 1.8 + flicker1 * 0.6 + flicker3;
-                // Subtle color shift
+                this.forgeOpening.material.emissiveIntensity = 2.5 + flicker1 * 0.8 + flicker3;
                 const heatPulse = (Math.sin(time * 0.5) + 1) * 0.5;
                 this.forgeOpening.material.emissive.setHSL(0.05 + heatPulse * 0.03, 1, 0.5);
             }
 
+            // Animate forge glow sphere
+            if (this.forgeGlowSphere && this.forgeGlowSphere.material) {
+                this.forgeGlowSphere.material.opacity = 0.12 + flicker1 * 0.04;
+                this.forgeGlowSphere.scale.setScalar(1 + flicker2 * 0.1);
+            }
+
+            // Decay anvil light back to normal after impact
+            if (this.anvilLight && this.anvilLight.intensity > 3) {
+                this.anvilLight.intensity = Math.max(3, this.anvilLight.intensity * 0.9);
+            }
+
+            // Fade impact flash
+            if (this.impactFlashMesh && this.impactFlashMesh.material && this.impactFlashMesh.material.opacity > 0) {
+                this.impactFlashMesh.material.opacity *= 0.85;
+            }
+
+            // Update hand light to follow camera
+            if (this.handLight) {
+                this.handLight.position.copy(this.camera.position);
+                this.handLight.position.y -= 0.3;
+                // Intensify near forge
+                this.handLight.intensity = this.nearForge ? 0.5 : 0.2;
+            }
+
+            // Water light subtle ripple
+            if (this.waterLight) {
+                this.waterLight.intensity = 0.8 + Math.sin(time * 2) * 0.2;
+            }
+
             this.renderer.render(this.scene, this.camera);
         });
+    }
+
+    updateVisualEffects(deltaTime) {
+        // Update right hand glow based on proximity to anvil
+        if (this.rightHandGlow && this.rightHandGlow.material) {
+            const targetOpacity = this.nearAnvil ? 0.25 : 0;
+            this.rightHandGlow.material.opacity += (targetOpacity - this.rightHandGlow.material.opacity) * 5 * deltaTime;
+            // Pulse effect when near anvil
+            if (this.nearAnvil) {
+                this.grabPulse += deltaTime * 4;
+                this.rightHandGlow.material.opacity += Math.sin(this.grabPulse) * 0.1;
+            }
+        }
+
+        // Dynamic vignette based on action
+        if (this.vignetteOverlay) {
+            let vignette = 'radial-gradient(ellipse at center, transparent 0%, transparent 40%,';
+            if (this.nearForge) {
+                vignette += ' rgba(255,50,0,0.2) 70%, rgba(100,20,0,0.5) 100%)';
+            } else if (this.nearWater) {
+                vignette += ' rgba(0,50,100,0.15) 70%, rgba(0,20,50,0.4) 100%)';
+            } else {
+                vignette += ' rgba(0,0,0,0.3) 80%, rgba(0,0,0,0.6) 100%)';
+            }
+            this.vignetteOverlay.style.background = vignette;
+        }
     }
 }
 
