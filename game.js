@@ -28,7 +28,10 @@ class ForgingGame {
         this.hammerStrikes = 0;
         this.isMetalInForge = false;
         this.isHammerSwinging = false;
+        this.hammerSwingProgress = 0;
         this.hammerVelocity = new THREE.Vector3();
+        this.metalDeformationCount = 0;
+        this.hasHitThisSwing = false;
 
         // Particles
         this.sparkParticles = [];
@@ -45,10 +48,26 @@ class ForgingGame {
         this.cameraRotation = { x: 0, y: 0 };
         this.cameraPosition = new THREE.Vector3(0, 1.6, 3);
 
-        // Audio context (for future sound implementation)
+        // Audio context
+        this.audioContext = null;
         this.sounds = {};
+        this.setupAudio();
+
+        // Steam particle system
+        this.steamSystem = null;
+
+        // Pointer lock state
+        this.pointerLocked = false;
 
         this.init();
+    }
+
+    setupAudio() {
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.warn('Web Audio API not supported');
+        }
     }
 
     init() {
@@ -80,6 +99,7 @@ class ForgingGame {
             1000
         );
         this.camera.position.copy(this.cameraPosition);
+        this.camera.rotation.order = 'YXZ'; // Prevent gimbal lock
     }
 
     setupRenderer() {
@@ -160,11 +180,22 @@ class ForgingGame {
         }
     }
 
-    enterVR() {
-        this.renderer.xr.getSession().then(() => {
+    async enterVR() {
+        try {
+            const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking'] };
+            const session = await navigator.xr.requestSession('immersive-vr', sessionInit);
+            await this.renderer.xr.setSession(session);
             this.isVR = true;
             document.body.classList.add('vr-mode');
-        });
+
+            // Resume audio context on user interaction
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                this.audioContext.resume();
+            }
+        } catch (error) {
+            console.error('Failed to start VR session:', error);
+            alert('Could not start VR session. Please check your VR headset connection.');
+        }
     }
 
     onVRSelectStart(controllerIndex) {
@@ -530,8 +561,8 @@ class ForgingGame {
             this.mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
             this.mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 
-            // Camera rotation with mouse
-            if (this.mouseDown) {
+            // Camera rotation with mouse (pointer lock)
+            if (this.pointerLocked) {
                 this.cameraRotation.y -= e.movementX * 0.002;
                 this.cameraRotation.x -= e.movementY * 0.002;
                 this.cameraRotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, this.cameraRotation.x));
@@ -545,9 +576,20 @@ class ForgingGame {
             this.renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // Pointer lock for better camera control
-        this.renderer.domElement.addEventListener('click', () => {
-            this.renderer.domElement.requestPointerLock();
+        // Pointer lock for better camera control (only on canvas, not UI)
+        this.renderer.domElement.addEventListener('click', (e) => {
+            if (!this.pointerLocked) {
+                this.renderer.domElement.requestPointerLock();
+            }
+        });
+
+        // Track pointer lock state
+        document.addEventListener('pointerlockchange', () => {
+            this.pointerLocked = document.pointerLockElement === this.renderer.domElement;
+        });
+
+        document.addEventListener('pointerlockerror', () => {
+            console.warn('Pointer lock failed');
         });
     }
 
@@ -591,9 +633,11 @@ class ForgingGame {
     resetMetal() {
         // Reset metal to anvil
         this.metal.position.set(0, 1.2, 0);
+        this.metal.scale.set(1, 1, 1); // Reset deformation
         this.metalTemperature = 20;
         this.quality = 0;
         this.hammerStrikes = 0;
+        this.metalDeformationCount = 0;
         this.isMetalInForge = false;
         console.log('Metal reset');
     }
@@ -601,56 +645,33 @@ class ForgingGame {
     onHammerSwing() {
         if (this.isHammerSwinging) return;
 
+        // Resume audio context on first interaction
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+
         this.isHammerSwinging = true;
-
-        // Animate hammer swing
-        const startPos = this.hammer.position.clone();
-        const startRot = this.hammer.rotation.clone();
-        const swingDuration = 0.3;
-        let swingTime = 0;
-
-        const swingAnimation = () => {
-            swingTime += this.clock.getDelta();
-            const progress = Math.min(swingTime / swingDuration, 1);
-
-            if (progress < 0.5) {
-                // Wind up
-                this.hammer.position.y = startPos.y + progress * 0.4;
-                this.hammer.rotation.x = startRot.x - progress * Math.PI / 2;
-            } else {
-                // Strike down
-                const strikeProgress = (progress - 0.5) * 2;
-                this.hammer.position.y = startPos.y + 0.2 - strikeProgress * 0.4;
-                this.hammer.rotation.x = startRot.x - Math.PI / 4 + strikeProgress * Math.PI / 2;
-
-                // Check for metal hit at bottom of swing
-                if (strikeProgress > 0.7 && strikeProgress < 0.8) {
-                    this.checkHammerHit();
-                }
-            }
-
-            if (progress < 1) {
-                requestAnimationFrame(swingAnimation);
-            } else {
-                // Reset hammer
-                this.hammer.position.copy(this.hammerInitialPosition);
-                this.hammer.rotation.copy(this.hammerInitialRotation);
-                this.isHammerSwinging = false;
-                swingTime = 0;
-            }
-        };
-
-        swingAnimation();
+        this.hammerSwingProgress = 0;
+        this.hasHitThisSwing = false;
     }
 
     checkHammerHit() {
-        // Check if hammer hits metal
-        const hammerPos = this.hammer.position;
-        const metalPos = this.metal.position;
-        const distance = hammerPos.distanceTo(metalPos);
+        if (this.hasHitThisSwing) return; // Only hit once per swing
 
-        if (distance < 1) {
-            this.onMetalStrike();
+        // Check if metal is on anvil (not in forge or barrel)
+        const metalPos = this.metal.position;
+        const anvilPos = this.anvil.position;
+        const distanceToAnvil = new THREE.Vector2(metalPos.x - anvilPos.x, metalPos.z - anvilPos.z).length();
+
+        if (distanceToAnvil < 0.8) {
+            // Metal is on or near anvil
+            const hammerPos = this.hammer.position;
+            const distance = hammerPos.distanceTo(metalPos);
+
+            if (distance < 0.6) { // More precise hit detection
+                this.onMetalStrike();
+                this.hasHitThisSwing = true;
+            }
         }
     }
 
@@ -658,32 +679,47 @@ class ForgingGame {
         // Metal must be hot to forge
         if (this.metalTemperature < 600) {
             console.log('Metal too cold! Heat it in the forge first.');
+            this.playErrorSound();
             return;
         }
 
         this.hammerStrikes++;
+        this.metalDeformationCount++;
 
-        // Calculate quality based on temperature and strikes
+        // Calculate quality based on temperature
         const optimalTemp = 1000;
         const tempDiff = Math.abs(this.metalTemperature - optimalTemp);
-        const tempQuality = Math.max(0, 100 - (tempDiff / 10));
 
-        this.quality = Math.min(100, this.quality + (tempQuality / 20));
+        // Only increase quality if temperature is in good range
+        if (this.metalTemperature >= 700 && this.metalTemperature <= 1200) {
+            const tempQuality = Math.max(0, 100 - (tempDiff / 8));
+            const qualityIncrease = tempQuality / 15;
+            this.quality = Math.min(100, this.quality + qualityIncrease);
+        } else if (this.metalTemperature >= 600) {
+            // Minimal quality increase if temperature is marginal
+            this.quality = Math.min(100, this.quality + 0.5);
+        }
 
-        // Slightly deform metal (visual feedback)
-        this.metal.scale.y *= 0.98;
-        this.metal.scale.x *= 1.01;
+        // Deform metal with limits (visual feedback)
+        if (this.metalDeformationCount < 20) {
+            this.metal.scale.y *= 0.98;
+            this.metal.scale.x *= 1.01;
+        } else {
+            // Reset after too much deformation
+            this.metal.scale.set(1, 0.7, 1.2);
+            this.metalDeformationCount = 0;
+        }
 
         // Create sparks
         this.createSparks(this.metal.position);
 
-        // Play hammer sound (placeholder)
+        // Play hammer sound
         this.playHammerSound();
 
-        // Cool metal slightly from working
+        // Cool metal from working
         this.metalTemperature -= 15;
 
-        console.log('Strike! Temperature: ' + this.metalTemperature + '°C, Quality: ' + this.quality.toFixed(1) + '%');
+        console.log('Strike! Temp: ' + this.metalTemperature.toFixed(0) + '°C, Quality: ' + this.quality.toFixed(1) + '%');
     }
 
     createSparks(position) {
@@ -708,19 +744,121 @@ class ForgingGame {
     }
 
     createSteamEffect() {
-        // Create steam particles when quenching
         console.log('*HISSSSSS* Steam rises from the water!');
-        // Visual steam effect would go here
+
+        // Create temporary steam particles
+        if (!this.steamSystem) {
+            const steamGeometry = new THREE.BufferGeometry();
+            const steamCount = 40;
+            const steamPositions = new Float32Array(steamCount * 3);
+            this.steamVelocities = [];
+
+            for (let i = 0; i < steamCount; i++) {
+                steamPositions[i * 3] = 2 + (Math.random() - 0.5) * 0.3;
+                steamPositions[i * 3 + 1] = 0.5;
+                steamPositions[i * 3 + 2] = -1 + (Math.random() - 0.5) * 0.3;
+                this.steamVelocities.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.02,
+                    0.05 + Math.random() * 0.03,
+                    (Math.random() - 0.5) * 0.02
+                ));
+            }
+
+            steamGeometry.setAttribute('position', new THREE.BufferAttribute(steamPositions, 3));
+
+            const steamMaterial = new THREE.PointsMaterial({
+                color: 0xdddddd,
+                size: 0.4,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const steam = new THREE.Points(steamGeometry, steamMaterial);
+            this.scene.add(steam);
+            this.steamSystem = { points: steam, velocities: this.steamVelocities, active: true, lifetime: 0 };
+        } else {
+            this.steamSystem.active = true;
+            this.steamSystem.lifetime = 0;
+            this.steamSystem.points.material.opacity = 0.8;
+        }
     }
 
     playHammerSound() {
-        // Placeholder for hammer strike sound
-        // In a full implementation, this would play an actual audio file
+        if (!this.audioContext) return;
+
+        // Create a metallic "clang" sound using Web Audio API
+        const now = this.audioContext.currentTime;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+
+        // Metallic strike - mix of frequencies
+        oscillator.type = 'square';
+        oscillator.frequency.setValueAtTime(200, now);
+        oscillator.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+
+        // Sharp attack, quick decay
+        gainNode.gain.setValueAtTime(0.3, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+
+        oscillator.start(now);
+        oscillator.stop(now + 0.2);
     }
 
     playQuenchSound() {
-        // Placeholder for quenching sound
-        // In a full implementation, this would play a hissing/sizzling sound
+        if (!this.audioContext) return;
+
+        // Create a hissing/sizzling sound
+        const now = this.audioContext.currentTime;
+        const bufferSize = this.audioContext.sampleRate * 1.5; // 1.5 seconds
+        const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
+        const data = buffer.getChannelData(0);
+
+        // Generate white noise for hiss
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize / 3));
+        }
+
+        const source = this.audioContext.createBufferSource();
+        const gainNode = this.audioContext.createGain();
+        const filter = this.audioContext.createBiquadFilter();
+
+        source.buffer = buffer;
+        filter.type = 'highpass';
+        filter.frequency.value = 1000;
+
+        gainNode.gain.setValueAtTime(0.2, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+
+        source.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+
+        source.start(now);
+    }
+
+    playErrorSound() {
+        if (!this.audioContext) return;
+
+        // Create a "thud" sound for failed strike
+        const now = this.audioContext.currentTime;
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(80, now);
+        oscillator.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+
+        gainNode.gain.setValueAtTime(0.15, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+
+        oscillator.start(now);
+        oscillator.stop(now + 0.15);
     }
 
     updateParticles(deltaTime) {
@@ -778,6 +916,38 @@ class ForgingGame {
             }
         }
         this.fireSystem.geometry.attributes.position.needsUpdate = true;
+
+        // Update steam particles
+        if (this.steamSystem && this.steamSystem.active) {
+            const steamPositions = this.steamSystem.points.geometry.attributes.position.array;
+            this.steamSystem.lifetime += deltaTime;
+
+            for (let i = 0; i < this.steamSystem.velocities.length; i++) {
+                steamPositions[i * 3] += this.steamSystem.velocities[i].x;
+                steamPositions[i * 3 + 1] += this.steamSystem.velocities[i].y;
+                steamPositions[i * 3 + 2] += this.steamSystem.velocities[i].z;
+
+                // Expand steam as it rises
+                this.steamSystem.velocities[i].x *= 1.01;
+                this.steamSystem.velocities[i].z *= 1.01;
+
+                // Reset steam particles that go too high
+                if (steamPositions[i * 3 + 1] > 3) {
+                    steamPositions[i * 3] = 2 + (Math.random() - 0.5) * 0.3;
+                    steamPositions[i * 3 + 1] = 0.5;
+                    steamPositions[i * 3 + 2] = -1 + (Math.random() - 0.5) * 0.3;
+                }
+            }
+
+            this.steamSystem.points.geometry.attributes.position.needsUpdate = true;
+            this.steamSystem.points.material.opacity *= 0.98;
+
+            // Deactivate after 3 seconds
+            if (this.steamSystem.lifetime > 3) {
+                this.steamSystem.active = false;
+                this.steamSystem.points.material.opacity = 0;
+            }
+        }
     }
 
     updateMetalTemperature(deltaTime) {
@@ -837,6 +1007,47 @@ class ForgingGame {
         document.getElementById('qualityText').textContent = this.quality.toFixed(1) + '%';
     }
 
+    updateHammerSwing(deltaTime) {
+        if (!this.isHammerSwinging) return;
+
+        const swingDuration = 0.4; // Duration of swing in seconds
+        this.hammerSwingProgress += deltaTime / swingDuration;
+
+        if (this.hammerSwingProgress >= 1) {
+            // End of swing
+            this.hammer.position.copy(this.hammerInitialPosition);
+            this.hammer.rotation.copy(this.hammerInitialRotation);
+            this.isHammerSwinging = false;
+            this.hammerSwingProgress = 0;
+        } else {
+            const progress = this.hammerSwingProgress;
+            const startPos = this.hammerInitialPosition;
+            const startRot = this.hammerInitialRotation;
+
+            if (progress < 0.4) {
+                // Wind up (40% of swing)
+                const windupProgress = progress / 0.4;
+                this.hammer.position.y = startPos.y + windupProgress * 0.5;
+                this.hammer.rotation.x = startRot.x - windupProgress * Math.PI / 3;
+            } else if (progress < 0.7) {
+                // Strike down (30% of swing)
+                const strikeProgress = (progress - 0.4) / 0.3;
+                this.hammer.position.y = startPos.y + 0.5 - strikeProgress * 0.7;
+                this.hammer.rotation.x = startRot.x - Math.PI / 3 + strikeProgress * (Math.PI / 2);
+
+                // Check for hit at 60% of strike
+                if (strikeProgress > 0.6 && strikeProgress < 0.7 && !this.hasHitThisSwing) {
+                    this.checkHammerHit();
+                }
+            } else {
+                // Return (30% of swing)
+                const returnProgress = (progress - 0.7) / 0.3;
+                this.hammer.position.y = startPos.y - 0.2 + returnProgress * 0.2;
+                this.hammer.rotation.x = startRot.x + Math.PI / 6 - returnProgress * Math.PI / 6;
+            }
+        }
+    }
+
     updateCamera(deltaTime) {
         if (this.isVR) return; // VR handles camera automatically
 
@@ -865,26 +1076,64 @@ class ForgingGame {
     }
 
     hideLoadingScreen() {
-        setTimeout(() => {
-            const loadingScreen = document.getElementById('loading-screen');
-            loadingScreen.classList.add('hidden');
-            setTimeout(() => {
-                loadingScreen.style.display = 'none';
-            }, 500);
-        }, 1000);
+        // Animate loading progress
+        let progress = 0;
+        const loadingInterval = setInterval(() => {
+            progress += Math.random() * 15 + 5;
+            if (progress > 100) progress = 100;
+
+            const progressBar = document.getElementById('loadingProgress');
+            const loadingText = document.getElementById('loadingText');
+
+            if (progressBar) {
+                progressBar.style.width = progress + '%';
+            }
+
+            if (loadingText) {
+                const messages = [
+                    'Heating the forge...',
+                    'Preparing the anvil...',
+                    'Sharpening tools...',
+                    'Stoking the fire...',
+                    'Ready to forge!'
+                ];
+                const messageIndex = Math.min(Math.floor(progress / 20), messages.length - 1);
+                loadingText.textContent = messages[messageIndex];
+            }
+
+            if (progress >= 100) {
+                clearInterval(loadingInterval);
+                setTimeout(() => {
+                    const loadingScreen = document.getElementById('loading-screen');
+                    if (loadingScreen) {
+                        loadingScreen.classList.add('hidden');
+                        setTimeout(() => {
+                            loadingScreen.style.display = 'none';
+                        }, 500);
+                    }
+                }, 300);
+            }
+        }, 100);
     }
 
     animate() {
         this.renderer.setAnimationLoop(() => {
-            const deltaTime = this.clock.getDelta();
+            const deltaTime = Math.min(this.clock.getDelta(), 0.1); // Cap delta time to prevent jumps
 
             this.updateMetalTemperature(deltaTime);
             this.updateParticles(deltaTime);
+            this.updateHammerSwing(deltaTime);
             this.updateCamera(deltaTime);
             this.updateUI();
 
             // Animate forge light flickering
-            this.forgeLight.intensity = 2 + Math.sin(Date.now() * 0.003) * 0.3;
+            const time = Date.now() * 0.001;
+            this.forgeLight.intensity = 2 + Math.sin(time * 3) * 0.3 + Math.sin(time * 7) * 0.1;
+
+            // Animate forge opening emissive
+            if (this.forgeOpening) {
+                this.forgeOpening.material.emissiveIntensity = 1 + Math.sin(time * 2) * 0.2;
+            }
 
             this.renderer.render(this.scene, this.camera);
         });
