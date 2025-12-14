@@ -2004,56 +2004,7 @@ class ForgingGame {
     }
 
     updateUI() {
-        // Update temperature bars
-        const forgeTempPercent = (this.forgeTemperature / 1500) * 100;
-        document.getElementById('forgeTemp').style.width = forgeTempPercent + '%';
-        document.getElementById('forgeTempText').textContent = this.forgeTemperature.toFixed(0) + '°C';
-
-        const metalTempPercent = (this.metalTemperature / 1500) * 100;
-        document.getElementById('metalTemp').style.width = metalTempPercent + '%';
-        document.getElementById('metalTempText').textContent = this.metalTemperature.toFixed(0) + '°C';
-
-        // Color the metal temp bar based on forging quality
-        const metalTempBar = document.getElementById('metalTemp');
-        if (this.metalTemperature >= 800 && this.metalTemperature <= 1100) {
-            metalTempBar.style.background = 'linear-gradient(90deg, #00ff00, #88ff00)';
-        } else if (this.metalTemperature >= 600) {
-            metalTempBar.style.background = 'linear-gradient(90deg, #ffaa00, #ff6600)';
-        } else {
-            metalTempBar.style.background = 'linear-gradient(90deg, #ff3300, #ff6600, #ffaa00)';
-        }
-
-        // Update quality bar
-        document.getElementById('qualityBar').style.width = this.quality + '%';
-        document.getElementById('qualityText').textContent = this.quality.toFixed(1) + '%';
-
-        // Update NEW stats
-        if (document.getElementById('moneyText')) {
-            document.getElementById('moneyText').textContent = this.money;
-        }
-        if (document.getElementById('reputationText')) {
-            document.getElementById('reputationText').textContent = this.reputation;
-        }
-        if (document.getElementById('weaponTypeText')) {
-            const weaponName = this.weaponTypes[this.currentWeaponType]?.name || 'Sword';
-            document.getElementById('weaponTypeText').textContent = weaponName;
-        }
-
-        // Update crosshair color based on proximity
-        if (this.crosshairElement) {
-            const ring = this.crosshairElement.querySelector('.crosshair-ring');
-            if (ring) {
-                if (this.nearAnvil) {
-                    ring.style.borderColor = '#00ff00';
-                } else if (this.nearForge) {
-                    ring.style.borderColor = '#ff6600';
-                } else if (this.nearWater) {
-                    ring.style.borderColor = '#4488ff';
-                } else {
-                    ring.style.borderColor = '#ffffff';
-                }
-            }
-        }
+        // No UI clutter - pure immersion
     }
 
     updateHammerSwing(deltaTime) {
