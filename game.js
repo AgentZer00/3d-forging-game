@@ -125,6 +125,45 @@ class ForgingGame {
         this.impactFlash = 0;
         this.metalSparks = [];
 
+        // PHYSICS & PICKUP SYSTEM
+        this.pickupableItems = [];
+        this.heldItemRight = null;
+        this.heldItemLeft = null;
+        this.nearbyItems = [];
+
+        // MOUSE SWING MECHANICS
+        this.mouseSwingState = 'idle'; // idle, charging, swinging
+        this.swingStartY = 0;
+        this.swingPower = 0;
+        this.lastMouseY = 0;
+        this.mouseVelocityY = 0;
+
+        // WEAPON TYPE SYSTEM
+        this.weaponTypes = {
+            sword: { name: 'Sword', basePrice: 100, difficulty: 1.0, requiredStrikes: 8 },
+            axe: { name: 'Battle Axe', basePrice: 150, difficulty: 1.2, requiredStrikes: 10 },
+            dagger: { name: 'Dagger', basePrice: 60, difficulty: 0.8, requiredStrikes: 5 },
+            mace: { name: 'Mace', basePrice: 120, difficulty: 1.1, requiredStrikes: 7 },
+            spear: { name: 'Spear', basePrice: 90, difficulty: 0.9, requiredStrikes: 6 },
+            greatsword: { name: 'Greatsword', basePrice: 200, difficulty: 1.5, requiredStrikes: 12 }
+        };
+        this.currentWeaponType = 'sword';
+        this.finishedWeapons = [];
+
+        // ECONOMY SYSTEM
+        this.money = 0;
+        this.reputation = 0;
+
+        // CUSTOMER SYSTEM
+        this.customers = [];
+        this.customerQueue = [];
+        this.nextCustomerTime = 0;
+        this.shopOpen = false;
+
+        // SELLING SYSTEM
+        this.displayedWeapons = [];
+        this.selectedWeaponForSale = null;
+
         this.init();
     }
 
@@ -448,13 +487,9 @@ class ForgingGame {
         this.leftHand.scale.set(1.4, 1.4, 1.4);  // 40% bigger hands!
         this.handsGroup.add(this.leftHand);
 
-        // Create hammer attached to right hand - BIGGER
-        this.createHandHammer();
+        // VR-style: Tools are picked up from world, not attached to hands
 
-        // Create tongs attached to left hand
-        this.createHandTongs();
-
-        // Create held metal (attached to tongs) - MORE PROMINENT
+        // Create held metal (can be picked up with tongs) - MORE PROMINENT
         this.createHeldMetal();
 
         // Add hand glow effect meshes
@@ -554,169 +589,11 @@ class ForgingGame {
         // Store finger references
         handGroup.userData.fingers = fingers;
 
-        // Wrist/Arm stub - BIGGER
-        const wristGeometry = new THREE.CylinderGeometry(0.045, 0.05, 0.18, 10);
-        const wrist = new THREE.Mesh(wristGeometry, skinMaterial);
-        wrist.position.set(0, 0.02, 0.12);
-        wrist.rotation.x = Math.PI / 2;
-        wrist.castShadow = true;
-        handGroup.add(wrist);
-
-        // Sleeve - leather blacksmith glove cuff
-        const sleeveGeometry = new THREE.CylinderGeometry(0.055, 0.065, 0.15, 10);
-        const sleeveMaterial = new THREE.MeshStandardMaterial({
-            color: 0x3a2515,
-            roughness: 0.85,
-            metalness: 0.1,
-            emissive: 0x1a0a05,
-            emissiveIntensity: 0.15
-        });
-        const sleeve = new THREE.Mesh(sleeveGeometry, sleeveMaterial);
-        sleeve.position.set(0, 0.02, 0.22);
-        sleeve.rotation.x = Math.PI / 2;
-        sleeve.castShadow = true;
-        handGroup.add(sleeve);
-
-        // Add leather strap detail on sleeve
-        const strapGeometry = new THREE.TorusGeometry(0.058, 0.008, 8, 24);
-        const strapMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2a1a0a,
-            roughness: 0.7,
-            metalness: 0.3
-        });
-        const strap = new THREE.Mesh(strapGeometry, strapMaterial);
-        strap.position.set(0, 0.02, 0.17);
-        strap.rotation.x = Math.PI / 2;
-        handGroup.add(strap);
-
+        // VR-style hands - NO ARMS OR WRISTS, just clean hand cut-off
         return handGroup;
     }
 
-    createHandHammer() {
-        const hammerGroup = new THREE.Group();
-
-        // Hammer head - BIGGER and more detailed
-        const headGeometry = new THREE.BoxGeometry(0.14, 0.1, 0.2);
-        const hammerMaterial = new THREE.MeshStandardMaterial({
-            color: 0x666666,
-            roughness: 0.25,
-            metalness: 0.95,
-            emissive: 0x111111,
-            emissiveIntensity: 0.1
-        });
-        const head = new THREE.Mesh(headGeometry, hammerMaterial);
-        head.castShadow = true;
-        head.receiveShadow = true;
-        hammerGroup.add(head);
-
-        // Add hammer face (striking surface)
-        const faceGeometry = new THREE.CylinderGeometry(0.045, 0.045, 0.02, 16);
-        const faceMaterial = new THREE.MeshStandardMaterial({
-            color: 0x888888,
-            roughness: 0.15,
-            metalness: 1
-        });
-        const face = new THREE.Mesh(faceGeometry, faceMaterial);
-        face.rotation.x = Math.PI / 2;
-        face.position.z = -0.11;
-        hammerGroup.add(face);
-
-        // Add wedge detail at top
-        const wedgeGeometry = new THREE.BoxGeometry(0.02, 0.12, 0.06);
-        const wedgeMaterial = new THREE.MeshStandardMaterial({
-            color: 0x444444,
-            roughness: 0.4,
-            metalness: 0.8
-        });
-        const wedge = new THREE.Mesh(wedgeGeometry, wedgeMaterial);
-        wedge.position.y = 0.06;
-        hammerGroup.add(wedge);
-
-        // Hammer handle - BIGGER with grip texture
-        const handleGeometry = new THREE.CylinderGeometry(0.02, 0.025, 0.4, 10);
-        const handleMaterial = new THREE.MeshStandardMaterial({
-            color: 0x5a3a1a,
-            roughness: 0.6,
-            metalness: 0.1,
-            emissive: 0x1a0a00,
-            emissiveIntensity: 0.1
-        });
-        const handle = new THREE.Mesh(handleGeometry, handleMaterial);
-        handle.position.y = 0.25;
-        handle.castShadow = true;
-        hammerGroup.add(handle);
-
-        // Add grip wrapping
-        const gripGeometry = new THREE.CylinderGeometry(0.024, 0.024, 0.12, 8);
-        const gripMaterial = new THREE.MeshStandardMaterial({
-            color: 0x2a1a0a,
-            roughness: 0.9,
-            metalness: 0
-        });
-        const grip = new THREE.Mesh(gripGeometry, gripMaterial);
-        grip.position.y = 0.38;
-        hammerGroup.add(grip);
-
-        // Position hammer in right hand
-        hammerGroup.position.set(0, -0.1, -0.12);
-        hammerGroup.rotation.x = -Math.PI / 4;
-        this.rightHand.add(hammerGroup);
-        this.handHammer = hammerGroup;
-
-        // Store initial rotation for animation
-        this.hammerRestRotation = hammerGroup.rotation.clone();
-    }
-
-    createHandTongs() {
-        const tongsGroup = new THREE.Group();
-        const tongsMaterial = new THREE.MeshStandardMaterial({
-            color: 0x444444,
-            roughness: 0.4,
-            metalness: 0.8
-        });
-
-        // Left arm of tongs
-        const armGeometry = new THREE.BoxGeometry(0.015, 0.25, 0.02);
-        const leftArm = new THREE.Mesh(armGeometry, tongsMaterial);
-        leftArm.position.set(-0.015, -0.1, 0);
-        leftArm.rotation.z = 0.1;
-        leftArm.castShadow = true;
-        tongsGroup.add(leftArm);
-
-        // Right arm of tongs
-        const rightArm = new THREE.Mesh(armGeometry, tongsMaterial);
-        rightArm.position.set(0.015, -0.1, 0);
-        rightArm.rotation.z = -0.1;
-        rightArm.castShadow = true;
-        tongsGroup.add(rightArm);
-
-        // Pivot joint
-        const pivotGeometry = new THREE.CylinderGeometry(0.015, 0.015, 0.03, 8);
-        const pivot = new THREE.Mesh(pivotGeometry, tongsMaterial);
-        pivot.rotation.x = Math.PI / 2;
-        pivot.castShadow = true;
-        tongsGroup.add(pivot);
-
-        // Gripping ends
-        const gripGeometry = new THREE.BoxGeometry(0.025, 0.08, 0.02);
-        const leftGrip = new THREE.Mesh(gripGeometry, tongsMaterial);
-        leftGrip.position.set(-0.022, -0.26, 0);
-        leftGrip.rotation.z = 0.2;
-        leftGrip.castShadow = true;
-        tongsGroup.add(leftGrip);
-
-        const rightGrip = new THREE.Mesh(gripGeometry, tongsMaterial);
-        rightGrip.position.set(0.022, -0.26, 0);
-        rightGrip.rotation.z = -0.2;
-        rightGrip.castShadow = true;
-        tongsGroup.add(rightGrip);
-
-        // Position tongs in left hand
-        tongsGroup.position.set(0, -0.05, -0.12);
-        tongsGroup.rotation.x = -Math.PI / 3;
-        this.leftHand.add(tongsGroup);
-        this.handTongs = tongsGroup;
-    }
+    // Tools are now pickupable items in the world, not attached to hands
 
     createHeldMetal() {
         // Metal piece held by tongs - MUCH BIGGER AND MORE VISIBLE
@@ -1091,7 +968,7 @@ class ForgingGame {
     }
 
     createTools() {
-        // World hammer (decorative, on tool rack)
+        // PICKUPABLE HAMMER - on workbench
         const hammerGroup = new THREE.Group();
 
         const headGeometry = new THREE.BoxGeometry(0.15, 0.1, 0.25);
@@ -1114,10 +991,49 @@ class ForgingGame {
         handle.castShadow = true;
         hammerGroup.add(handle);
 
-        hammerGroup.position.set(-3.85, 1.5, -2.5);
-        hammerGroup.rotation.z = Math.PI / 6;
+        hammerGroup.position.set(0.5, 1.3, 0.5);
+        hammerGroup.rotation.z = Math.PI / 2;
+        hammerGroup.userData.type = 'hammer';
+        hammerGroup.userData.pickupable = true;
+        hammerGroup.userData.holdOffset = new THREE.Vector3(0, -0.3, -0.1);
         this.scene.add(hammerGroup);
         this.hammer = hammerGroup;
+        this.pickupableItems.push(hammerGroup);
+
+        // PICKUPABLE TONGS - on workbench
+        const tongsGroup = new THREE.Group();
+        const tongsMaterial = new THREE.MeshStandardMaterial({
+            color: 0x444444,
+            roughness: 0.4,
+            metalness: 0.8
+        });
+
+        const armGeometry = new THREE.BoxGeometry(0.015, 0.25, 0.02);
+        const leftArm = new THREE.Mesh(armGeometry, tongsMaterial);
+        leftArm.position.set(-0.015, -0.1, 0);
+        leftArm.rotation.z = 0.1;
+        leftArm.castShadow = true;
+        tongsGroup.add(leftArm);
+
+        const rightArm = new THREE.Mesh(armGeometry, tongsMaterial);
+        rightArm.position.set(0.015, -0.1, 0);
+        rightArm.rotation.z = -0.1;
+        rightArm.castShadow = true;
+        tongsGroup.add(rightArm);
+
+        const pivotGeometry = new THREE.CylinderGeometry(0.01, 0.01, 0.04, 8);
+        const pivot = new THREE.Mesh(pivotGeometry, tongsMaterial);
+        pivot.rotation.z = Math.PI / 2;
+        tongsGroup.add(pivot);
+
+        tongsGroup.position.set(-0.5, 1.3, 0.5);
+        tongsGroup.rotation.z = Math.PI / 2;
+        tongsGroup.userData.type = 'tongs';
+        tongsGroup.userData.pickupable = true;
+        tongsGroup.userData.holdOffset = new THREE.Vector3(0, -0.15, -0.08);
+        this.scene.add(tongsGroup);
+        this.tongs = tongsGroup;
+        this.pickupableItems.push(tongsGroup);
     }
 
     createMetal() {
@@ -1363,6 +1279,10 @@ class ForgingGame {
                 // VR-style hand tracking - hands follow mouse movement
                 this.mouseTargetPos.x = this.mouse.x * 0.15;
                 this.mouseTargetPos.y = this.mouse.y * 0.1;
+
+                // MOUSE SWING MECHANICS - Track vertical mouse movement
+                this.mouseVelocityY = e.movementY;
+                this.updateMouseSwing(e.movementY);
             }
         });
 
@@ -1403,6 +1323,29 @@ class ForgingGame {
                 break;
             case 'r':
                 this.resetMetal();
+                break;
+            case 'f':
+                // Pick up / drop items
+                this.togglePickup();
+                break;
+            case 'g':
+                // Drop held item
+                this.dropItem();
+                break;
+            case 't':
+                // Toggle shop
+                this.toggleShop();
+                break;
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+                // Select weapon type
+                const types = Object.keys(this.weaponTypes);
+                this.currentWeaponType = types[parseInt(key) - 1];
+                this.showMessage(`Selected: ${this.weaponTypes[this.currentWeaponType].name}`);
                 break;
             case ' ':
                 // Spacebar also swings hammer
@@ -1842,123 +1785,144 @@ class ForgingGame {
     }
 
     updateParticles(deltaTime) {
-        // ENHANCED Update sparks with better physics
-        if (this.sparkSystem.active) {
-            const positions = this.sparkSystem.points.geometry.attributes.position.array;
-            let allDead = true;
+        this._updateSparkParticles(deltaTime);
+        this._updateEmberParticles();
+        this._updateSmokeParticles();
+        this._updateFireParticles();
+        this._updateSteamParticles(deltaTime);
+    }
 
-            for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
-                // Update position
-                positions[i * 3] += this.sparkSystem.velocities[i].x * deltaTime * 60;
-                positions[i * 3 + 1] += this.sparkSystem.velocities[i].y * deltaTime * 60;
-                positions[i * 3 + 2] += this.sparkSystem.velocities[i].z * deltaTime * 60;
+    _updateSparkParticles(deltaTime) {
+        if (!this.sparkSystem.active) return;
 
-                // Enhanced gravity (stronger)
-                this.sparkSystem.velocities[i].y -= 0.015;
+        const positions = this.sparkSystem.points.geometry.attributes.position.array;
+        let allDead = true;
 
-                // Air resistance
-                this.sparkSystem.velocities[i].multiplyScalar(0.98);
+        for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
+            this._applyVelocityToParticle(positions, i, this.sparkSystem.velocities[i], deltaTime * 60);
 
-                // Lifetime
-                this.sparkSystem.lifetimes[i] -= deltaTime;
+            this.sparkSystem.velocities[i].y -= 0.015; // Enhanced gravity
+            this.sparkSystem.velocities[i].multiplyScalar(0.98); // Air resistance
+            this.sparkSystem.lifetimes[i] -= deltaTime;
 
-                if (positions[i * 3 + 1] > 0 && this.sparkSystem.lifetimes[i] > 0) {
-                    allDead = false;
-                }
-
-                // Bounce off floor
-                if (positions[i * 3 + 1] < 0.05) {
-                    this.sparkSystem.velocities[i].y *= -0.4; // Bounce with energy loss
-                    positions[i * 3 + 1] = 0.05;
-                }
+            if (positions[i * 3 + 1] > 0 && this.sparkSystem.lifetimes[i] > 0) {
+                allDead = false;
             }
 
-            this.sparkSystem.points.geometry.attributes.position.needsUpdate = true;
-            this.sparkSystem.points.material.opacity *= 0.94; // Slower fade
+            this._applyFloorBounce(positions, i, this.sparkSystem.velocities[i]);
+        }
 
-            if (allDead || this.sparkSystem.points.material.opacity < 0.01) {
-                this.sparkSystem.active = false;
+        this.sparkSystem.points.geometry.attributes.position.needsUpdate = true;
+        this.sparkSystem.points.material.opacity *= 0.94;
+
+        if (allDead || this.sparkSystem.points.material.opacity < 0.01) {
+            this.sparkSystem.active = false;
+        }
+    }
+
+    _updateEmberParticles() {
+        if (!this.emberSystem) return;
+
+        const positions = this.emberSystem.points.geometry.attributes.position.array;
+        const time = Date.now() * 0.001;
+
+        for (let i = 0; i < this.emberSystem.velocities.length; i++) {
+            this._applyVelocityToParticle(positions, i, this.emberSystem.velocities[i]);
+
+            positions[i * 3] += Math.sin(time + i) * 0.002; // Swirl motion
+            positions[i * 3 + 2] += Math.cos(time + i) * 0.002;
+
+            if (positions[i * 3 + 1] > 3.5) {
+                this._resetEmberParticle(positions, i);
             }
         }
 
-        // Update ember particles (floating embers around forge)
-        if (this.emberSystem) {
-            const emberPositions = this.emberSystem.points.geometry.attributes.position.array;
-            for (let i = 0; i < this.emberSystem.velocities.length; i++) {
-                emberPositions[i * 3] += this.emberSystem.velocities[i].x;
-                emberPositions[i * 3 + 1] += this.emberSystem.velocities[i].y;
-                emberPositions[i * 3 + 2] += this.emberSystem.velocities[i].z;
+        this.emberSystem.points.geometry.attributes.position.needsUpdate = true;
+        this.emberSystem.points.material.opacity = 0.6 + Math.sin(Date.now() * 0.003) * 0.2;
+    }
 
-                // Swirl motion
-                emberPositions[i * 3] += Math.sin(Date.now() * 0.001 + i) * 0.002;
-                emberPositions[i * 3 + 2] += Math.cos(Date.now() * 0.001 + i) * 0.002;
+    _updateSmokeParticles() {
+        const positions = this.smokeSystem.points.geometry.attributes.position.array;
 
-                // Reset when too high
-                if (emberPositions[i * 3 + 1] > 3.5) {
-                    emberPositions[i * 3] = -2.5 + (Math.random() - 0.5) * 2;
-                    emberPositions[i * 3 + 1] = 0.8;
-                    emberPositions[i * 3 + 2] = -1.5 + (Math.random() - 0.5) * 2;
-                }
-            }
-            this.emberSystem.points.geometry.attributes.position.needsUpdate = true;
-
-            // Pulsing glow effect
-            this.emberSystem.points.material.opacity = 0.6 + Math.sin(Date.now() * 0.003) * 0.2;
-        }
-
-        // Update smoke
-        const smokePositions = this.smokeSystem.points.geometry.attributes.position.array;
         for (let i = 0; i < this.smokeSystem.velocities.length; i++) {
-            smokePositions[i * 3] += this.smokeSystem.velocities[i].x;
-            smokePositions[i * 3 + 1] += this.smokeSystem.velocities[i].y;
-            smokePositions[i * 3 + 2] += this.smokeSystem.velocities[i].z;
+            this._applyVelocityToParticle(positions, i, this.smokeSystem.velocities[i]);
 
-            if (smokePositions[i * 3 + 1] > 6) {
-                const angle = (i / this.smokeSystem.velocities.length) * Math.PI * 2;
-                smokePositions[i * 3] = -2.5 + Math.cos(angle) * 0.2;
-                smokePositions[i * 3 + 1] = 2.5;
-                smokePositions[i * 3 + 2] = -1.5 + Math.sin(angle) * 0.2;
+            if (positions[i * 3 + 1] > 6) {
+                this._resetSmokeParticle(positions, i);
             }
         }
+
         this.smokeSystem.points.geometry.attributes.position.needsUpdate = true;
+    }
 
-        // Animate fire particles with MORE CHAOS!
-        const firePositions = this.fireSystem.geometry.attributes.position.array;
-        for (let i = 0; i < firePositions.length / 3; i++) {
-            firePositions[i * 3 + 1] += Math.random() * 0.02 + 0.01;
-            firePositions[i * 3] += (Math.random() - 0.5) * 0.01;
-            firePositions[i * 3 + 2] += (Math.random() - 0.5) * 0.01;
+    _updateFireParticles() {
+        const positions = this.fireSystem.geometry.attributes.position.array;
 
-            if (firePositions[i * 3 + 1] > 1.8) {
-                firePositions[i * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
-                firePositions[i * 3 + 1] = 0.8;
-                firePositions[i * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
+        for (let i = 0; i < positions.length / 3; i++) {
+            positions[i * 3 + 1] += Math.random() * 0.02 + 0.01;
+            positions[i * 3] += (Math.random() - 0.5) * 0.01;
+            positions[i * 3 + 2] += (Math.random() - 0.5) * 0.01;
+
+            if (positions[i * 3 + 1] > 1.8) {
+                this._resetFireParticle(positions, i);
             }
         }
+
         this.fireSystem.geometry.attributes.position.needsUpdate = true;
+    }
 
-        // Update steam particles
-        if (this.steamSystem && this.steamSystem.active) {
-            const steamPositions = this.steamSystem.points.geometry.attributes.position.array;
-            this.steamSystem.lifetime += deltaTime;
+    _updateSteamParticles(deltaTime) {
+        if (!this.steamSystem || !this.steamSystem.active) return;
 
-            for (let i = 0; i < this.steamSystem.velocities.length; i++) {
-                steamPositions[i * 3] += this.steamSystem.velocities[i].x;
-                steamPositions[i * 3 + 1] += this.steamSystem.velocities[i].y;
-                steamPositions[i * 3 + 2] += this.steamSystem.velocities[i].z;
+        const positions = this.steamSystem.points.geometry.attributes.position.array;
+        this.steamSystem.lifetime += deltaTime;
 
-                this.steamSystem.velocities[i].x *= 1.01;
-                this.steamSystem.velocities[i].z *= 1.01;
-            }
+        for (let i = 0; i < this.steamSystem.velocities.length; i++) {
+            this._applyVelocityToParticle(positions, i, this.steamSystem.velocities[i]);
 
-            this.steamSystem.points.geometry.attributes.position.needsUpdate = true;
-            this.steamSystem.points.material.opacity *= 0.97;
-
-            if (this.steamSystem.lifetime > 3) {
-                this.steamSystem.active = false;
-                this.steamSystem.points.material.opacity = 0;
-            }
+            this.steamSystem.velocities[i].x *= 1.01; // Expansion
+            this.steamSystem.velocities[i].z *= 1.01;
         }
+
+        this.steamSystem.points.geometry.attributes.position.needsUpdate = true;
+        this.steamSystem.points.material.opacity *= 0.97;
+
+        if (this.steamSystem.lifetime > 3) {
+            this.steamSystem.active = false;
+            this.steamSystem.points.material.opacity = 0;
+        }
+    }
+
+    _applyVelocityToParticle(positions, index, velocity, multiplier = 1) {
+        positions[index * 3] += velocity.x * multiplier;
+        positions[index * 3 + 1] += velocity.y * multiplier;
+        positions[index * 3 + 2] += velocity.z * multiplier;
+    }
+
+    _applyFloorBounce(positions, index, velocity) {
+        if (positions[index * 3 + 1] < 0.05) {
+            velocity.y *= -0.4; // Bounce with energy loss
+            positions[index * 3 + 1] = 0.05;
+        }
+    }
+
+    _resetEmberParticle(positions, index) {
+        positions[index * 3] = -2.5 + (Math.random() - 0.5) * 2;
+        positions[index * 3 + 1] = 0.8;
+        positions[index * 3 + 2] = -1.5 + (Math.random() - 0.5) * 2;
+    }
+
+    _resetSmokeParticle(positions, index) {
+        const angle = (index / this.smokeSystem.velocities.length) * Math.PI * 2;
+        positions[index * 3] = -2.5 + Math.cos(angle) * 0.2;
+        positions[index * 3 + 1] = 2.5;
+        positions[index * 3 + 2] = -1.5 + Math.sin(angle) * 0.2;
+    }
+
+    _resetFireParticle(positions, index) {
+        positions[index * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
+        positions[index * 3 + 1] = 0.8;
+        positions[index * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
     }
 
     updateMetalTemperature(deltaTime) {
@@ -2058,6 +2022,18 @@ class ForgingGame {
         document.getElementById('qualityBar').style.width = this.quality + '%';
         document.getElementById('qualityText').textContent = this.quality.toFixed(1) + '%';
 
+        // Update NEW stats
+        if (document.getElementById('moneyText')) {
+            document.getElementById('moneyText').textContent = this.money;
+        }
+        if (document.getElementById('reputationText')) {
+            document.getElementById('reputationText').textContent = this.reputation;
+        }
+        if (document.getElementById('weaponTypeText')) {
+            const weaponName = this.weaponTypes[this.currentWeaponType]?.name || 'Sword';
+            document.getElementById('weaponTypeText').textContent = weaponName;
+        }
+
         // Update crosshair color based on proximity
         if (this.crosshairElement) {
             const ring = this.crosshairElement.querySelector('.crosshair-ring');
@@ -2076,18 +2052,25 @@ class ForgingGame {
     }
 
     updateHammerSwing(deltaTime) {
-        if (!this.isHammerSwinging || !this.handHammer) return;
+        if (!this.isHammerSwinging) return;
+
+        const hammer = this.heldItemRight;
+        if (!hammer || hammer.userData.type !== 'hammer') return;
 
         const swingDuration = 0.25; // Faster swing
         this.hammerSwingProgress += deltaTime / swingDuration;
 
+        // Store initial rotation if not set
+        if (!hammer.userData.restRotation) {
+            hammer.userData.restRotation = hammer.rotation.clone();
+        }
+
         if (this.hammerSwingProgress >= 1) {
             // End of swing - reset
-            this.handHammer.rotation.x = this.hammerRestRotation.x;
-            this.handHammer.rotation.z = this.hammerRestRotation.z || 0;
-            this.handHammer.position.y = -0.08;
-            this.rightHand.position.y = -0.4;
-            this.rightHand.position.z = -0.5;
+            hammer.rotation.copy(hammer.userData.restRotation);
+            hammer.position.y = hammer.userData.holdOffset.y;
+            this.rightHand.position.y = -0.35;
+            this.rightHand.position.z = -0.45;
             this.isHammerSwinging = false;
             this.hammerSwingProgress = 0;
         } else {
@@ -2098,10 +2081,10 @@ class ForgingGame {
                 const windupProgress = progress / 0.3;
                 const easeOut = 1 - Math.pow(1 - windupProgress, 3); // Ease out cubic
 
-                this.handHammer.rotation.x = this.hammerRestRotation.x - easeOut * 1.0;
-                this.handHammer.rotation.z = easeOut * -0.3; // Slight twist
-                this.rightHand.position.y = -0.4 + easeOut * 0.2;
-                this.rightHand.position.z = -0.5 - easeOut * 0.1; // Pull back
+                hammer.rotation.x = hammer.userData.restRotation.x - easeOut * 1.0;
+                hammer.rotation.z = easeOut * -0.3; // Slight twist
+                this.rightHand.position.y = -0.35 + easeOut * 0.2;
+                this.rightHand.position.z = -0.45 - easeOut * 0.1; // Pull back
                 this.rightHand.rotation.z = easeOut * -0.15; // Shoulder rotation
 
             } else if (progress < 0.6) {
@@ -2109,10 +2092,10 @@ class ForgingGame {
                 const strikeProgress = (progress - 0.3) / 0.3;
                 const easeIn = strikeProgress * strikeProgress * strikeProgress; // Ease in cubic (fast)
 
-                this.handHammer.rotation.x = this.hammerRestRotation.x - 1.0 + easeIn * 2.2;
-                this.handHammer.rotation.z = -0.3 + easeIn * 0.5; // Twist back
-                this.rightHand.position.y = -0.4 + 0.2 - easeIn * 0.35; // Slam down
-                this.rightHand.position.z = -0.5 - 0.1 + easeIn * 0.15; // Forward thrust
+                hammer.rotation.x = hammer.userData.restRotation.x - 1.0 + easeIn * 2.2;
+                hammer.rotation.z = -0.3 + easeIn * 0.5; // Twist back
+                this.rightHand.position.y = -0.35 + 0.2 - easeIn * 0.35; // Slam down
+                this.rightHand.position.z = -0.45 - 0.1 + easeIn * 0.15; // Forward thrust
                 this.rightHand.rotation.z = -0.15 + easeIn * 0.25; // Follow through
 
                 // Check for hit at middle of strike
@@ -2123,8 +2106,8 @@ class ForgingGame {
                 // Add impact recoil when hitting
                 if (this.hasHitThisSwing && strikeProgress > 0.5) {
                     const recoil = Math.sin((strikeProgress - 0.5) * 20) * 0.02;
-                    this.handHammer.position.y = -0.08 + recoil;
-                    this.handHammer.rotation.x += recoil;
+                    hammer.position.y = hammer.userData.holdOffset.y + recoil;
+                    hammer.rotation.x += recoil;
                 }
 
             } else {
@@ -2132,8 +2115,8 @@ class ForgingGame {
                 const returnProgress = (progress - 0.6) / 0.4;
                 const easeOut = 1 - Math.pow(1 - returnProgress, 2); // Ease out quad
 
-                this.handHammer.rotation.x = this.hammerRestRotation.x + 1.2 - easeOut * 1.2;
-                this.handHammer.rotation.z = 0.2 - easeOut * 0.2;
+                hammer.rotation.x = hammer.userData.restRotation.x + 1.2 - easeOut * 1.2;
+                hammer.rotation.z = 0.2 - easeOut * 0.2;
                 this.rightHand.position.y = -0.4 - 0.15 + easeOut * 0.15;
                 this.rightHand.position.z = -0.5 + 0.05 - easeOut * 0.05;
                 this.rightHand.rotation.z = 0.1 - easeOut * 0.1;
@@ -2387,6 +2370,10 @@ class ForgingGame {
             this.updateUI();
             this.updateVisualEffects(deltaTime);
 
+            // NEW SYSTEMS
+            this.updateNearbyItems();
+            this.updateCustomers(deltaTime);
+
             // MASSIVELY ENHANCED forge light flickering
             const time = Date.now() * 0.001;
             const flicker1 = Math.sin(time * 3.7) * 0.6;
@@ -2470,6 +2457,289 @@ class ForgingGame {
                 vignette += ' rgba(0,0,0,0.3) 80%, rgba(0,0,0,0.6) 100%)';
             }
             this.vignetteOverlay.style.background = vignette;
+        }
+    }
+
+    // ===== NEW GAME SYSTEMS =====
+
+    // MOUSE SWING MECHANICS - Swing by moving mouse up then down
+    updateMouseSwing(movementY) {
+        if (!this.heldItemRight || this.heldItemRight.userData.type !== 'hammer') return;
+
+        if (this.mouseSwingState === 'idle' && movementY < -5) {
+            // Moving mouse up - start charging
+            this.mouseSwingState = 'charging';
+            this.swingStartY = Date.now();
+            this.swingPower = 0;
+        } else if (this.mouseSwingState === 'charging' && movementY > 5) {
+            // Moving mouse down - execute swing
+            this.mouseSwingState = 'swinging';
+            this.swingPower = Math.min(100, (Date.now() - this.swingStartY) / 10);
+            this.executeHammerSwing(this.swingPower);
+            setTimeout(() => {
+                this.mouseSwingState = 'idle';
+            }, 500);
+        }
+    }
+
+    executeHammerSwing(power) {
+        if (!this.heldItemRight) return;
+
+        this.isHammerSwinging = true;
+        this.hammerSwingProgress = 0;
+        this.hasHitThisSwing = false;
+
+        // Stronger swing with more power
+        const powerMultiplier = 0.5 + (power / 100);
+        this.showMessage(`Swing Power: ${Math.floor(power)}%`);
+
+        // Check if hitting metal
+        setTimeout(() => {
+            if (this.nearAnvil && this.metal.visible) {
+                this.onMetalStrike(powerMultiplier);
+            }
+        }, 200);
+    }
+
+    // ITEM PICKUP SYSTEM
+    updateNearbyItems() {
+        this.nearbyItems = [];
+        const handPos = new THREE.Vector3();
+        this.rightHand.getWorldPosition(handPos);
+
+        this.pickupableItems.forEach(item => {
+            const dist = handPos.distanceTo(item.position);
+            if (dist < 0.8) {
+                this.nearbyItems.push(item);
+            }
+        });
+    }
+
+    togglePickup() {
+        if (this.heldItemRight) {
+            this.dropItem('right');
+        } else if (this.nearbyItems.length > 0) {
+            this.pickupItem(this.nearbyItems[0], 'right');
+        }
+    }
+
+    pickupItem(item, hand) {
+        if (!item || !item.userData.pickupable) return;
+
+        const handObj = hand === 'right' ? this.rightHand : this.leftHand;
+
+        // Remove from world
+        this.scene.remove(item);
+
+        // Attach to hand
+        item.position.copy(item.userData.holdOffset || new THREE.Vector3(0, -0.2, -0.1));
+        item.rotation.set(-Math.PI / 4, 0, 0);
+        handObj.add(item);
+
+        if (hand === 'right') {
+            this.heldItemRight = item;
+        } else {
+            this.heldItemLeft = item;
+        }
+
+        this.showMessage(`Picked up ${item.userData.type}`);
+        this.targetFingerCurl = 0.7; // Curl fingers to hold item
+    }
+
+    dropItem(hand = 'right') {
+        const item = hand === 'right' ? this.heldItemRight : this.heldItemLeft;
+        if (!item) return;
+
+        const handObj = hand === 'right' ? this.rightHand : this.leftHand;
+
+        // Get world position
+        const worldPos = new THREE.Vector3();
+        item.getWorldPosition(worldPos);
+
+        // Remove from hand
+        handObj.remove(item);
+
+        // Add back to world
+        item.position.copy(worldPos);
+        item.rotation.set(0, 0, Math.PI / 2);
+        this.scene.add(item);
+
+        if (hand === 'right') {
+            this.heldItemRight = null;
+        } else {
+            this.heldItemLeft = null;
+        }
+
+        this.showMessage(`Dropped ${item.userData.type}`);
+        this.targetFingerCurl = 0;
+    }
+
+    // WEAPON TYPE SYSTEM
+    createWeapon(type) {
+        const weaponDef = this.weaponTypes[type];
+        if (!weaponDef) return null;
+
+        const weapon = {
+            type: type,
+            name: weaponDef.name,
+            quality: this.quality,
+            strikes: this.hammerStrikes,
+            price: this.calculateWeaponPrice(type, this.quality),
+            timestamp: Date.now()
+        };
+
+        this.finishedWeapons.push(weapon);
+        this.showMessage(`${weaponDef.name} completed! Quality: ${Math.floor(this.quality)}% - Worth $${weapon.price}`);
+
+        return weapon;
+    }
+
+    calculateWeaponPrice(type, quality) {
+        const weaponDef = this.weaponTypes[type];
+        const basePrice = weaponDef.basePrice;
+        const qualityMultiplier = 0.5 + (quality / 100) * 1.5; // 0.5x to 2x based on quality
+        const reputationBonus = 1 + (this.reputation / 100) * 0.5; // Up to 50% bonus
+        return Math.floor(basePrice * qualityMultiplier * reputationBonus);
+    }
+
+    // CUSTOMER SYSTEM
+    spawnCustomer() {
+        if (this.customers.length >= 3) return; // Max 3 customers
+
+        const customer = {
+            id: Date.now(),
+            name: this.generateCustomerName(),
+            desiredWeapon: this.getRandomWeaponType(),
+            minQuality: 30 + Math.random() * 40,
+            patience: 30 + Math.random() * 30, // seconds
+            position: new THREE.Vector3(-3, 0, 2 + this.customers.length * 1.5),
+            model: this.createCustomerModel()
+        };
+
+        customer.model.position.copy(customer.position);
+        this.scene.add(customer.model);
+        this.customers.push(customer);
+
+        this.showMessage(`${customer.name} wants a ${customer.desiredWeapon}!`);
+    }
+
+    generateCustomerName() {
+        const names = ['Aldric', 'Brom', 'Cedric', 'Darius', 'Eldrin', 'Finn', 'Gareth', 'Haldor'];
+        return names[Math.floor(Math.random() * names.length)];
+    }
+
+    getRandomWeaponType() {
+        const types = Object.keys(this.weaponTypes);
+        return types[Math.floor(Math.random() * types.length)];
+    }
+
+    createCustomerModel() {
+        const customerGroup = new THREE.Group();
+
+        // Simple body
+        const bodyGeometry = new THREE.CylinderGeometry(0.3, 0.35, 1.5, 8);
+        const bodyMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4a3520,
+            roughness: 0.8
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.position.y = 0.75;
+        body.castShadow = true;
+        customerGroup.add(body);
+
+        // Head
+        const headGeometry = new THREE.SphereGeometry(0.25, 8, 8);
+        const headMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffccaa,
+            roughness: 0.6
+        });
+        const head = new THREE.Mesh(headGeometry, headMaterial);
+        head.position.y = 1.65;
+        head.castShadow = true;
+        customerGroup.add(head);
+
+        return customerGroup;
+    }
+
+    updateCustomers(deltaTime) {
+        this.customers.forEach((customer, index) => {
+            customer.patience -= deltaTime;
+
+            if (customer.patience <= 0) {
+                // Customer leaves
+                this.scene.remove(customer.model);
+                this.customers.splice(index, 1);
+                this.showMessage(`${customer.name} left impatiently!`);
+                this.reputation = Math.max(0, this.reputation - 5);
+            }
+        });
+
+        // Spawn new customers
+        this.nextCustomerTime -= deltaTime;
+        if (this.nextCustomerTime <= 0 && this.shopOpen) {
+            this.spawnCustomer();
+            this.nextCustomerTime = 15 + Math.random() * 15; // Every 15-30 seconds
+        }
+    }
+
+    // SELLING SYSTEM
+    toggleShop() {
+        this.shopOpen = !this.shopOpen;
+        this.showMessage(this.shopOpen ? 'Shop OPEN - Customers will arrive!' : 'Shop CLOSED');
+
+        if (this.shopOpen && this.customers.length === 0) {
+            this.spawnCustomer();
+            this.nextCustomerTime = 10;
+        }
+    }
+
+    sellWeapon(weapon, customer) {
+        if (!weapon || !customer) return;
+
+        const weaponDef = this.weaponTypes[weapon.type];
+
+        // Check if weapon matches request
+        if (weapon.type !== customer.desiredWeapon) {
+            this.showMessage(`${customer.name}: That's not what I ordered!`);
+            return;
+        }
+
+        // Check quality
+        if (weapon.quality < customer.minQuality) {
+            this.showMessage(`${customer.name}: This quality is too low!`);
+            this.reputation = Math.max(0, this.reputation - 10);
+            return;
+        }
+
+        // Successful sale!
+        const salePrice = weapon.price;
+        this.money += salePrice;
+        this.reputation += 5;
+
+        // Remove weapon and customer
+        const weaponIndex = this.finishedWeapons.indexOf(weapon);
+        if (weaponIndex > -1) {
+            this.finishedWeapons.splice(weaponIndex, 1);
+        }
+
+        const customerIndex = this.customers.indexOf(customer);
+        if (customerIndex > -1) {
+            this.scene.remove(customer.model);
+            this.customers.splice(customerIndex, 1);
+        }
+
+        this.showMessage(`Sold ${weapon.name} for $${salePrice}! Total: $${this.money}`);
+    }
+
+    // AUTO-SELL when weapon completed (simplified for now)
+    completeForgingAndSell() {
+        const weapon = this.createWeapon(this.currentWeaponType);
+        if (!weapon) return;
+
+        // Auto-sell to first customer if available
+        if (this.customers.length > 0) {
+            const customer = this.customers[0];
+            this.sellWeapon(weapon, customer);
         }
     }
 }
