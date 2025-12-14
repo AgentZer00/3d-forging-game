@@ -17,70 +17,9 @@
         </div>
     </div>
 
-    <div id="ui-overlay">
-        <div class="top-panel">
-            <div class="stat-group">
-                <h3>Forge Temperature</h3>
-                <div class="temp-bar">
-                    <div class="temp-fill" id="forgeTemp"></div>
-                </div>
-                <span id="forgeTempText">1200°C</span>
-            </div>
-
-            <div class="stat-group">
-                <h3>Metal Temperature</h3>
-                <div class="temp-bar metal">
-                    <div class="temp-fill" id="metalTemp"></div>
-                </div>
-                <span id="metalTempText">20°C</span>
-            </div>
-
-            <div class="stat-group">
-                <h3>Blade Quality</h3>
-                <div class="quality-bar">
-                    <div class="quality-fill" id="qualityBar"></div>
-                </div>
-                <span id="qualityText">0%</span>
-            </div>
-
-            <div class="stat-group">
-                <h3>Money: $<span id="moneyText">0</span></h3>
-                <h3>Reputation: <span id="reputationText">0</span></h3>
-                <h3>Weapon: <span id="weaponTypeText">Sword</span></h3>
-            </div>
-        </div>
-
-        <div class="controls-panel">
-            <h3>Controls</h3>
-            <div class="control-list">
-                <p><strong>WASD:</strong> Move | <strong>Mouse:</strong> Look & Swing</p>
-                <p><strong>F:</strong> Pick up/Drop items | <strong>G:</strong> Drop held item</p>
-                <p><strong>Swing:</strong> Move mouse UP then DOWN</p>
-                <p><strong>E:</strong> Heat metal | <strong>Q:</strong> Quench metal</p>
-                <p><strong>T:</strong> Toggle shop | <strong>R:</strong> Reset metal</p>
-                <p><strong>1-6:</strong> Select weapon type</p>
-                <p><strong>ESC:</strong> Release mouse</p>
-            </div>
-        </div>
-
-        <div class="instructions">
-            <h2>How to Forge a Blade</h2>
-            <ol>
-                <li>Walk to the <strong>forge</strong> (left side) and press <strong>E</strong> to heat your metal</li>
-                <li>Watch the temperature - aim for <strong>800-1100°C</strong> (green bar)</li>
-                <li>Walk to the <strong>anvil</strong> (center) and <strong>click</strong> to hammer</li>
-                <li>Strike while the metal is hot for maximum quality</li>
-                <li>Reheat when the metal cools (bar turns orange/red)</li>
-                <li>When quality reaches <strong>80%+</strong>, press <strong>Q</strong> near the water barrel to finish!</li>
-            </ol>
-        </div>
-
-        <div class="click-prompt" id="clickPrompt">
-            <h2>Click to Start</h2>
-            <p>Click anywhere to begin forging</p>
-        </div>
-
-        <button id="vrButton" class="vr-button">Enter VR Mode</button>
+    <!-- Minimal UI - No clutter -->
+    <div class="click-prompt" id="clickPrompt">
+        <h2>Click to Start</h2>
     </div>
 
     <div id="game-container"></div>
