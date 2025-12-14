@@ -1842,123 +1842,144 @@ class ForgingGame {
     }
 
     updateParticles(deltaTime) {
-        // ENHANCED Update sparks with better physics
-        if (this.sparkSystem.active) {
-            const positions = this.sparkSystem.points.geometry.attributes.position.array;
-            let allDead = true;
+        this._updateSparkParticles(deltaTime);
+        this._updateEmberParticles();
+        this._updateSmokeParticles();
+        this._updateFireParticles();
+        this._updateSteamParticles(deltaTime);
+    }
 
-            for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
-                // Update position
-                positions[i * 3] += this.sparkSystem.velocities[i].x * deltaTime * 60;
-                positions[i * 3 + 1] += this.sparkSystem.velocities[i].y * deltaTime * 60;
-                positions[i * 3 + 2] += this.sparkSystem.velocities[i].z * deltaTime * 60;
+    _updateSparkParticles(deltaTime) {
+        if (!this.sparkSystem.active) return;
 
-                // Enhanced gravity (stronger)
-                this.sparkSystem.velocities[i].y -= 0.015;
+        const positions = this.sparkSystem.points.geometry.attributes.position.array;
+        let allDead = true;
 
-                // Air resistance
-                this.sparkSystem.velocities[i].multiplyScalar(0.98);
+        for (let i = 0; i < this.sparkSystem.velocities.length; i++) {
+            this._applyVelocityToParticle(positions, i, this.sparkSystem.velocities[i], deltaTime * 60);
 
-                // Lifetime
-                this.sparkSystem.lifetimes[i] -= deltaTime;
+            this.sparkSystem.velocities[i].y -= 0.015; // Enhanced gravity
+            this.sparkSystem.velocities[i].multiplyScalar(0.98); // Air resistance
+            this.sparkSystem.lifetimes[i] -= deltaTime;
 
-                if (positions[i * 3 + 1] > 0 && this.sparkSystem.lifetimes[i] > 0) {
-                    allDead = false;
-                }
-
-                // Bounce off floor
-                if (positions[i * 3 + 1] < 0.05) {
-                    this.sparkSystem.velocities[i].y *= -0.4; // Bounce with energy loss
-                    positions[i * 3 + 1] = 0.05;
-                }
+            if (positions[i * 3 + 1] > 0 && this.sparkSystem.lifetimes[i] > 0) {
+                allDead = false;
             }
 
-            this.sparkSystem.points.geometry.attributes.position.needsUpdate = true;
-            this.sparkSystem.points.material.opacity *= 0.94; // Slower fade
+            this._applyFloorBounce(positions, i, this.sparkSystem.velocities[i]);
+        }
 
-            if (allDead || this.sparkSystem.points.material.opacity < 0.01) {
-                this.sparkSystem.active = false;
+        this.sparkSystem.points.geometry.attributes.position.needsUpdate = true;
+        this.sparkSystem.points.material.opacity *= 0.94;
+
+        if (allDead || this.sparkSystem.points.material.opacity < 0.01) {
+            this.sparkSystem.active = false;
+        }
+    }
+
+    _updateEmberParticles() {
+        if (!this.emberSystem) return;
+
+        const positions = this.emberSystem.points.geometry.attributes.position.array;
+        const time = Date.now() * 0.001;
+
+        for (let i = 0; i < this.emberSystem.velocities.length; i++) {
+            this._applyVelocityToParticle(positions, i, this.emberSystem.velocities[i]);
+
+            positions[i * 3] += Math.sin(time + i) * 0.002; // Swirl motion
+            positions[i * 3 + 2] += Math.cos(time + i) * 0.002;
+
+            if (positions[i * 3 + 1] > 3.5) {
+                this._resetEmberParticle(positions, i);
             }
         }
 
-        // Update ember particles (floating embers around forge)
-        if (this.emberSystem) {
-            const emberPositions = this.emberSystem.points.geometry.attributes.position.array;
-            for (let i = 0; i < this.emberSystem.velocities.length; i++) {
-                emberPositions[i * 3] += this.emberSystem.velocities[i].x;
-                emberPositions[i * 3 + 1] += this.emberSystem.velocities[i].y;
-                emberPositions[i * 3 + 2] += this.emberSystem.velocities[i].z;
+        this.emberSystem.points.geometry.attributes.position.needsUpdate = true;
+        this.emberSystem.points.material.opacity = 0.6 + Math.sin(Date.now() * 0.003) * 0.2;
+    }
 
-                // Swirl motion
-                emberPositions[i * 3] += Math.sin(Date.now() * 0.001 + i) * 0.002;
-                emberPositions[i * 3 + 2] += Math.cos(Date.now() * 0.001 + i) * 0.002;
+    _updateSmokeParticles() {
+        const positions = this.smokeSystem.points.geometry.attributes.position.array;
 
-                // Reset when too high
-                if (emberPositions[i * 3 + 1] > 3.5) {
-                    emberPositions[i * 3] = -2.5 + (Math.random() - 0.5) * 2;
-                    emberPositions[i * 3 + 1] = 0.8;
-                    emberPositions[i * 3 + 2] = -1.5 + (Math.random() - 0.5) * 2;
-                }
-            }
-            this.emberSystem.points.geometry.attributes.position.needsUpdate = true;
-
-            // Pulsing glow effect
-            this.emberSystem.points.material.opacity = 0.6 + Math.sin(Date.now() * 0.003) * 0.2;
-        }
-
-        // Update smoke
-        const smokePositions = this.smokeSystem.points.geometry.attributes.position.array;
         for (let i = 0; i < this.smokeSystem.velocities.length; i++) {
-            smokePositions[i * 3] += this.smokeSystem.velocities[i].x;
-            smokePositions[i * 3 + 1] += this.smokeSystem.velocities[i].y;
-            smokePositions[i * 3 + 2] += this.smokeSystem.velocities[i].z;
+            this._applyVelocityToParticle(positions, i, this.smokeSystem.velocities[i]);
 
-            if (smokePositions[i * 3 + 1] > 6) {
-                const angle = (i / this.smokeSystem.velocities.length) * Math.PI * 2;
-                smokePositions[i * 3] = -2.5 + Math.cos(angle) * 0.2;
-                smokePositions[i * 3 + 1] = 2.5;
-                smokePositions[i * 3 + 2] = -1.5 + Math.sin(angle) * 0.2;
+            if (positions[i * 3 + 1] > 6) {
+                this._resetSmokeParticle(positions, i);
             }
         }
+
         this.smokeSystem.points.geometry.attributes.position.needsUpdate = true;
+    }
 
-        // Animate fire particles with MORE CHAOS!
-        const firePositions = this.fireSystem.geometry.attributes.position.array;
-        for (let i = 0; i < firePositions.length / 3; i++) {
-            firePositions[i * 3 + 1] += Math.random() * 0.02 + 0.01;
-            firePositions[i * 3] += (Math.random() - 0.5) * 0.01;
-            firePositions[i * 3 + 2] += (Math.random() - 0.5) * 0.01;
+    _updateFireParticles() {
+        const positions = this.fireSystem.geometry.attributes.position.array;
 
-            if (firePositions[i * 3 + 1] > 1.8) {
-                firePositions[i * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
-                firePositions[i * 3 + 1] = 0.8;
-                firePositions[i * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
+        for (let i = 0; i < positions.length / 3; i++) {
+            positions[i * 3 + 1] += Math.random() * 0.02 + 0.01;
+            positions[i * 3] += (Math.random() - 0.5) * 0.01;
+            positions[i * 3 + 2] += (Math.random() - 0.5) * 0.01;
+
+            if (positions[i * 3 + 1] > 1.8) {
+                this._resetFireParticle(positions, i);
             }
         }
+
         this.fireSystem.geometry.attributes.position.needsUpdate = true;
+    }
 
-        // Update steam particles
-        if (this.steamSystem && this.steamSystem.active) {
-            const steamPositions = this.steamSystem.points.geometry.attributes.position.array;
-            this.steamSystem.lifetime += deltaTime;
+    _updateSteamParticles(deltaTime) {
+        if (!this.steamSystem || !this.steamSystem.active) return;
 
-            for (let i = 0; i < this.steamSystem.velocities.length; i++) {
-                steamPositions[i * 3] += this.steamSystem.velocities[i].x;
-                steamPositions[i * 3 + 1] += this.steamSystem.velocities[i].y;
-                steamPositions[i * 3 + 2] += this.steamSystem.velocities[i].z;
+        const positions = this.steamSystem.points.geometry.attributes.position.array;
+        this.steamSystem.lifetime += deltaTime;
 
-                this.steamSystem.velocities[i].x *= 1.01;
-                this.steamSystem.velocities[i].z *= 1.01;
-            }
+        for (let i = 0; i < this.steamSystem.velocities.length; i++) {
+            this._applyVelocityToParticle(positions, i, this.steamSystem.velocities[i]);
 
-            this.steamSystem.points.geometry.attributes.position.needsUpdate = true;
-            this.steamSystem.points.material.opacity *= 0.97;
-
-            if (this.steamSystem.lifetime > 3) {
-                this.steamSystem.active = false;
-                this.steamSystem.points.material.opacity = 0;
-            }
+            this.steamSystem.velocities[i].x *= 1.01; // Expansion
+            this.steamSystem.velocities[i].z *= 1.01;
         }
+
+        this.steamSystem.points.geometry.attributes.position.needsUpdate = true;
+        this.steamSystem.points.material.opacity *= 0.97;
+
+        if (this.steamSystem.lifetime > 3) {
+            this.steamSystem.active = false;
+            this.steamSystem.points.material.opacity = 0;
+        }
+    }
+
+    _applyVelocityToParticle(positions, index, velocity, multiplier = 1) {
+        positions[index * 3] += velocity.x * multiplier;
+        positions[index * 3 + 1] += velocity.y * multiplier;
+        positions[index * 3 + 2] += velocity.z * multiplier;
+    }
+
+    _applyFloorBounce(positions, index, velocity) {
+        if (positions[index * 3 + 1] < 0.05) {
+            velocity.y *= -0.4; // Bounce with energy loss
+            positions[index * 3 + 1] = 0.05;
+        }
+    }
+
+    _resetEmberParticle(positions, index) {
+        positions[index * 3] = -2.5 + (Math.random() - 0.5) * 2;
+        positions[index * 3 + 1] = 0.8;
+        positions[index * 3 + 2] = -1.5 + (Math.random() - 0.5) * 2;
+    }
+
+    _resetSmokeParticle(positions, index) {
+        const angle = (index / this.smokeSystem.velocities.length) * Math.PI * 2;
+        positions[index * 3] = -2.5 + Math.cos(angle) * 0.2;
+        positions[index * 3 + 1] = 2.5;
+        positions[index * 3 + 2] = -1.5 + Math.sin(angle) * 0.2;
+    }
+
+    _resetFireParticle(positions, index) {
+        positions[index * 3] = -2.5 + (Math.random() - 0.5) * 0.8;
+        positions[index * 3 + 1] = 0.8;
+        positions[index * 3 + 2] = -1.2 + (Math.random() - 0.5) * 0.5;
     }
 
     updateMetalTemperature(deltaTime) {
