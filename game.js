@@ -188,7 +188,6 @@ class ForgingGame {
         this.createCrosshair();
         this.setupEventListeners();
         this.createParticleSystems();
-        this.hideLoadingScreen();
         this.animate();
     }
 
@@ -1427,6 +1426,8 @@ class ForgingGame {
     }
 
     resetMetal() {
+        if (!this.metal) return;
+
         // Reset metal state
         this.metal.scale.set(1, 1, 1);
         this.metalTemperature = 20;
@@ -1504,7 +1505,7 @@ class ForgingGame {
         }
     }
 
-    onMetalStrike() {
+    onMetalStrike(powerMultiplier = 1.0) {
         // Metal must be hot to forge effectively
         if (this.metalTemperature < 600) {
             this.showMessage('Metal too cold! Heat it in the forge first (Press E near forge)', '#ff6666');
@@ -1524,25 +1525,25 @@ class ForgingGame {
         if (this.metalTemperature >= 800 && this.metalTemperature <= 1100) {
             // Optimal range - maximum quality gain
             const tempQuality = Math.max(0, 100 - (tempDiff / 5));
-            const qualityIncrease = tempQuality / 10;
+            const qualityIncrease = (tempQuality / 10) * powerMultiplier;
             this.quality = Math.min(100, this.quality + qualityIncrease);
             this.showMessage('PERFECT STRIKE! +' + qualityIncrease.toFixed(1) + '% quality', '#00ff00', 800);
             // MASSIVE shake for perfect strike
-            this.addScreenShake(0.025);
+            this.addScreenShake(0.025 * powerMultiplier);
             // Flash effect
-            this.triggerImpactFlash(0.5);
+            this.triggerImpactFlash(0.5 * powerMultiplier);
             // Bright anvil light pulse
             if (this.anvilLight) {
-                this.anvilLight.intensity = 8;
+                this.anvilLight.intensity = 8 * powerMultiplier;
             }
         } else if (this.metalTemperature >= 600) {
             // Acceptable range - minimal quality gain
-            const qualityIncrease = 1;
+            const qualityIncrease = 1 * powerMultiplier;
             this.quality = Math.min(100, this.quality + qualityIncrease);
             this.showMessage('Strike! +' + qualityIncrease.toFixed(1) + '% (heat metal more for better results)', '#ffaa00', 800);
             // Medium shake for normal strike
-            this.addScreenShake(0.015);
-            this.triggerImpactFlash(0.3);
+            this.addScreenShake(0.015 * powerMultiplier);
+            this.triggerImpactFlash(0.3 * powerMultiplier);
         }
 
         // ENHANCED metal deformation - more dramatic forging
@@ -2400,55 +2401,6 @@ class ForgingGame {
         this.camera.rotation.x = this.cameraRotation.x + this.screenShake.y;
     }
 
-    hideLoadingScreen() {
-        let progress = 0;
-        const loadingInterval = setInterval(() => {
-            progress += Math.random() * 15 + 5;
-            if (progress > 100) progress = 100;
-
-            const progressBar = document.getElementById('loadingProgress');
-            const loadingText = document.getElementById('loadingText');
-
-            if (progressBar) {
-                progressBar.style.width = progress + '%';
-            }
-
-            if (loadingText) {
-                const messages = [
-                    'Heating the forge...',
-                    'Preparing the anvil...',
-                    'Sharpening tools...',
-                    'Stoking the fire...',
-                    'Ready to forge!'
-                ];
-                const messageIndex = Math.min(Math.floor(progress / 20), messages.length - 1);
-                loadingText.textContent = messages[messageIndex];
-            }
-
-            if (progress >= 100) {
-                clearInterval(loadingInterval);
-                setTimeout(() => {
-                    const loadingScreen = document.getElementById('loading-screen');
-                    if (loadingScreen) {
-                        loadingScreen.classList.add('hidden');
-                        setTimeout(() => {
-                            loadingScreen.style.display = 'none';
-
-                            // Show welcome message
-                            setTimeout(() => {
-                                this.showMessage(
-                                    'CLICK TO START FORGING\nWASD to move | E to heat | Click to strike',
-                                    '#ffaa00',
-                                    4000
-                                );
-                            }, 500);
-                        }, 500);
-                    }
-                }, 300);
-            }
-        }, 100);
-    }
-
     animate() {
         this.renderer.setAnimationLoop(() => {
             const deltaTime = Math.min(this.clock.getDelta(), 0.1);
@@ -2587,7 +2539,7 @@ class ForgingGame {
 
         // Check if hitting metal
         setTimeout(() => {
-            if (this.nearAnvil && this.metal.visible) {
+            if (this.nearAnvil && this.metal && this.metal.visible) {
                 this.onMetalStrike(powerMultiplier);
             }
         }, 200);
@@ -2596,6 +2548,8 @@ class ForgingGame {
     // ITEM PICKUP SYSTEM
     updateNearbyItems() {
         this.nearbyItems = [];
+        if (!this.rightHand) return;
+
         const handPos = new THREE.Vector3();
         this.rightHand.getWorldPosition(handPos);
 
@@ -2754,17 +2708,19 @@ class ForgingGame {
     }
 
     updateCustomers(deltaTime) {
-        this.customers.forEach((customer, index) => {
+        // Iterate backwards to safely remove customers
+        for (let i = this.customers.length - 1; i >= 0; i--) {
+            const customer = this.customers[i];
             customer.patience -= deltaTime;
 
             if (customer.patience <= 0) {
                 // Customer leaves
                 this.scene.remove(customer.model);
-                this.customers.splice(index, 1);
+                this.customers.splice(i, 1);
                 this.showMessage(`${customer.name} left impatiently!`);
                 this.reputation = Math.max(0, this.reputation - 5);
             }
-        });
+        }
 
         // Spawn new customers
         this.nextCustomerTime -= deltaTime;
