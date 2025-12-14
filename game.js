@@ -2223,25 +2223,37 @@ class ForgingGame {
         const playerPos = this.cameraPosition;
 
         // Check forge proximity
-        const forgeDistance = new THREE.Vector2(
-            playerPos.x - this.forge.position.x,
-            playerPos.z - this.forge.position.z
-        ).length();
-        this.nearForge = forgeDistance < 2.5;
+        if (this.forge && this.forge.position) {
+            const forgeDistance = new THREE.Vector2(
+                playerPos.x - this.forge.position.x,
+                playerPos.z - this.forge.position.z
+            ).length();
+            this.nearForge = forgeDistance < 2.5;
+        } else {
+            this.nearForge = false;
+        }
 
         // Check anvil proximity
-        const anvilDistance = new THREE.Vector2(
-            playerPos.x - this.anvil.position.x,
-            playerPos.z - this.anvil.position.z
-        ).length();
-        this.nearAnvil = anvilDistance < 1.8;
+        if (this.anvil && this.anvil.position) {
+            const anvilDistance = new THREE.Vector2(
+                playerPos.x - this.anvil.position.x,
+                playerPos.z - this.anvil.position.z
+            ).length();
+            this.nearAnvil = anvilDistance < 1.8;
+        } else {
+            this.nearAnvil = false;
+        }
 
         // Check water proximity
-        const waterDistance = new THREE.Vector2(
-            playerPos.x - this.waterBarrel.position.x,
-            playerPos.z - this.waterBarrel.position.z
-        ).length();
-        this.nearWater = waterDistance < 2;
+        if (this.waterBarrel && this.waterBarrel.position) {
+            const waterDistance = new THREE.Vector2(
+                playerPos.x - this.waterBarrel.position.x,
+                playerPos.z - this.waterBarrel.position.z
+            ).length();
+            this.nearWater = waterDistance < 2;
+        } else {
+            this.nearWater = false;
+        }
 
         // Update interaction indicators
         this.updateIndicator(this.forge, this.nearForge);
@@ -2250,7 +2262,7 @@ class ForgingGame {
     }
 
     updateIndicator(object, isNear) {
-        if (object.userData.indicator) {
+        if (object && object.userData && object.userData.indicator) {
             const indicator = object.userData.indicator;
             const targetOpacity = isNear ? 0.9 : 0;
             indicator.material.opacity += (targetOpacity - indicator.material.opacity) * 0.1;
