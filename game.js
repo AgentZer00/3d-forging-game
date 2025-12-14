@@ -596,7 +596,7 @@ class ForgingGame {
     // Tools are now pickupable items in the world, not attached to hands
 
     createHeldMetal() {
-        // Metal piece held by tongs - MUCH BIGGER AND MORE VISIBLE
+        // Metal piece that can be picked up with tongs - MUCH BIGGER AND MORE VISIBLE
         const metalGeometry = new THREE.BoxGeometry(0.2, 0.04, 0.06);
         const metalMaterial = new THREE.MeshStandardMaterial({
             color: 0x9a9a9a,
@@ -606,7 +606,7 @@ class ForgingGame {
             emissiveIntensity: 0
         });
         const heldMetal = new THREE.Mesh(metalGeometry, metalMaterial);
-        heldMetal.position.set(0, -0.32, 0);
+        heldMetal.position.set(-1.5, 1.3, 0); // Place on workbench
         heldMetal.castShadow = true;
         heldMetal.receiveShadow = true;
 
@@ -632,10 +632,15 @@ class ForgingGame {
         this.metalGlowMesh = new THREE.Mesh(glowGeometry, glowMaterial);
         heldMetal.add(this.metalGlowMesh);
 
-        this.handTongs.add(heldMetal);
+        // Add to scene as pickupable item
+        heldMetal.userData.type = 'metal';
+        heldMetal.userData.pickupable = true;
+        heldMetal.userData.holdOffset = new THREE.Vector3(0, -0.25, -0.1);
+        this.scene.add(heldMetal);
+        this.pickupableItems.push(heldMetal);
+
         this.heldMetal = heldMetal;
         this.heldMetalMaterial = metalMaterial;
-        this.heldMetal.visible = true;
     }
 
     createCrosshair() {
