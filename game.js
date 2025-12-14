@@ -2004,7 +2004,143 @@ class ForgingGame {
     }
 
     updateUI() {
-        // No UI clutter - pure immersion
+        // Modern useful HUD
+        this.updateStatsPanel();
+        this.updateEconomyPanel();
+        this.updateActionHints();
+        this.updateHeldItemsDisplay();
+        this.updateCustomerQueue();
+    }
+
+    updateStatsPanel() {
+        // Metal temperature bar
+        const metalTempPercent = Math.min(100, (this.metalTemperature / 1500) * 100);
+        const metalTempBar = document.getElementById('metalTempBar');
+        const metalTempText = document.getElementById('metalTempText');
+
+        if (metalTempBar && metalTempText) {
+            metalTempBar.style.width = metalTempPercent + '%';
+            metalTempText.textContent = Math.floor(this.metalTemperature) + '°C';
+
+            // Color based on temperature
+            if (this.metalTemperature >= 800 && this.metalTemperature <= 1100) {
+                metalTempBar.style.background = 'linear-gradient(90deg, #00ff00, #88ff88, #00ff00)';
+                metalTempBar.style.boxShadow = '0 0 15px rgba(0, 255, 0, 0.8)';
+            } else if (this.metalTemperature >= 600) {
+                metalTempBar.style.background = 'linear-gradient(90deg, #ffaa00, #ff6600, #ffaa00)';
+                metalTempBar.style.boxShadow = '0 0 10px rgba(255, 170, 0, 0.6)';
+            } else {
+                metalTempBar.style.background = 'linear-gradient(90deg, #ff3300, #ff6600, #ffaa00)';
+                metalTempBar.style.boxShadow = '0 0 10px rgba(255, 102, 0, 0.6)';
+            }
+        }
+
+        // Quality bar
+        const qualityBar = document.getElementById('qualityBar');
+        const qualityText = document.getElementById('qualityText');
+
+        if (qualityBar && qualityText) {
+            qualityBar.style.width = Math.min(100, this.quality) + '%';
+            qualityText.textContent = Math.floor(this.quality) + '%';
+        }
+    }
+
+    updateEconomyPanel() {
+        const moneyText = document.getElementById('moneyText');
+        const reputationText = document.getElementById('reputationText');
+        const weaponTypeText = document.getElementById('weaponTypeText');
+
+        if (moneyText) {
+            moneyText.textContent = '$' + this.money;
+        }
+
+        if (reputationText) {
+            reputationText.textContent = 'Rep: ' + this.reputation;
+        }
+
+        if (weaponTypeText) {
+            const weaponName = this.weaponTypes[this.currentWeaponType]?.name || 'Sword';
+            weaponTypeText.textContent = weaponName;
+        }
+    }
+
+    updateActionHints() {
+        const actionHint = document.getElementById('actionHint');
+        if (!actionHint) return;
+
+        let hint = '';
+
+        if (this.nearbyItems.length > 0 && !this.heldItemRight) {
+            hint = `Press F to pickup ${this.nearbyItems[0].userData.type}`;
+        } else if (this.nearForge && !this.isMetalInForge) {
+            hint = 'Press E to heat metal in forge';
+        } else if (this.nearAnvil && this.heldItemRight?.userData.type === 'hammer') {
+            hint = 'Move mouse UP then DOWN to swing hammer';
+        } else if (this.nearWater && this.metalTemperature > 400) {
+            hint = 'Press Q to quench metal';
+        } else if (this.quality >= 80) {
+            hint = 'Weapon ready! Press R to finish or keep improving';
+        }
+
+        actionHint.textContent = hint;
+        actionHint.style.display = hint ? 'block' : 'none';
+    }
+
+    updateHeldItemsDisplay() {
+        const rightHandItem = document.getElementById('rightHandItem');
+        const leftHandItem = document.getElementById('leftHandItem');
+        const rightHandSlot = document.getElementById('rightHandSlot');
+        const leftHandSlot = document.getElementById('leftHandSlot');
+
+        if (rightHandItem) {
+            if (this.heldItemRight) {
+                rightHandItem.textContent = this.heldItemRight.userData.type.charAt(0).toUpperCase() +
+                                           this.heldItemRight.userData.type.slice(1);
+                rightHandSlot?.classList.add('has-item');
+            } else {
+                rightHandItem.textContent = 'Empty';
+                rightHandSlot?.classList.remove('has-item');
+            }
+        }
+
+        if (leftHandItem) {
+            if (this.heldItemLeft) {
+                leftHandItem.textContent = this.heldItemLeft.userData.type.charAt(0).toUpperCase() +
+                                          this.heldItemLeft.userData.type.slice(1);
+                leftHandSlot?.classList.add('has-item');
+            } else {
+                leftHandItem.textContent = 'Empty';
+                leftHandSlot?.classList.remove('has-item');
+            }
+        }
+    }
+
+    updateCustomerQueue() {
+        const customerQueue = document.getElementById('customer-queue');
+        if (!customerQueue) return;
+
+        customerQueue.innerHTML = '';
+
+        this.customers.forEach(customer => {
+            const card = document.createElement('div');
+            card.className = 'customer-card';
+
+            const patiencePercent = (customer.patience / (customer.patience + 30)) * 100;
+
+            card.innerHTML = `
+                <div class="customer-name">👤 ${customer.name}</div>
+                <div class="customer-request">Wants: ${customer.desiredWeapon}</div>
+                <div class="customer-request">Min Quality: ${Math.floor(customer.minQuality)}%</div>
+                <div class="customer-patience">
+                    <div class="patience-bar">
+                        <div class="patience-fill" style="width: ${patiencePercent}%"></div>
+                    </div>
+                    <span class="patience-text">${Math.floor(customer.patience)}s</span>
+                </div>
+            `;
+
+            customerQueue.appendChild(card);
+        });
     }
 
     updateHammerSwing(deltaTime) {
