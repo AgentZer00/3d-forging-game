@@ -80,17 +80,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="game.js"></script>
     <script>
-        // Hide click prompt and show HUD once pointer is locked
-        document.addEventListener('pointerlockchange', function() {
-            const prompt = document.getElementById('clickPrompt');
-            const hud = document.getElementById('hud');
-            if (document.pointerLockElement) {
-                prompt.style.display = 'none';
-                if (hud) hud.style.display = 'block';
-            } else {
-                prompt.style.display = 'block';
-                if (hud) hud.style.display = 'none';
+        window.addEventListener('DOMContentLoaded', function() {
+            // Click prompt triggers pointer lock
+            const clickPrompt = document.getElementById('clickPrompt');
+            if (clickPrompt) {
+                clickPrompt.addEventListener('click', function() {
+                    const canvas = document.querySelector('canvas');
+                    if (canvas) {
+                        canvas.requestPointerLock();
+                    }
+                });
             }
+
+            // Hide click prompt and show HUD once pointer is locked
+            document.addEventListener('pointerlockchange', function() {
+                const prompt = document.getElementById('clickPrompt');
+                const hud = document.getElementById('hud');
+                if (document.pointerLockElement) {
+                    if (prompt) prompt.style.display = 'none';
+                    if (hud) hud.style.display = 'block';
+                } else {
+                    if (prompt) prompt.style.display = 'block';
+                    if (hud) hud.style.display = 'none';
+                }
+            });
         });
     </script>
 </body>
