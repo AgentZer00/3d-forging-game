@@ -395,7 +395,7 @@ class ForgingGame {
         // VR Button
         const vrButton = document.getElementById('vrButton');
 
-        if ('xr' in navigator) {
+        if (vrButton && 'xr' in navigator) {
             navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
                 if (supported) {
                     vrButton.addEventListener('click', () => this.enterVR());
@@ -404,7 +404,7 @@ class ForgingGame {
                     vrButton.disabled = true;
                 }
             });
-        } else {
+        } else if (vrButton) {
             vrButton.textContent = 'WebXR Not Available';
             vrButton.disabled = true;
         }
@@ -650,7 +650,7 @@ class ForgingGame {
             <div class="crosshair-dot"></div>
             <div class="crosshair-ring"></div>
         `;
-        document.getElementById('ui-overlay').appendChild(crosshair);
+        document.body.appendChild(crosshair);
         this.crosshairElement = crosshair;
     }
 
