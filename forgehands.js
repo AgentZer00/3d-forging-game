@@ -86,6 +86,7 @@ class ForgeHands {
 
         // Weapon selection
         this.selectedWeaponType = 'Dagger'; // Default to simplest weapon
+        this.selectedMetalType = 'iron'; // BUG FIX: Initialize metal type
 
         // Strike cooldown
         this.lastStrikeTime = 0;
@@ -95,6 +96,63 @@ class ForgeHands {
         this.isJumping = false;
         this.jumpVelocity = 0;
         this.isGrounded = true;
+
+        // Steam particles for quenching
+        this.activeSteam = [];
+
+        // Day/night cycle
+        this.timeOfDay = 0.5; // 0 = midnight, 0.5 = noon, 1 = midnight
+        this.daySpeed = 0.01; // How fast time passes
+
+        // Ambient sound timer
+        this.lastAmbientSound = 0;
+        this.ambientSoundInterval = 5; // seconds
+
+        // Shop system
+        this.shopOpen = false;
+        this.shopInventory = {
+            metals: [
+                { type: 'iron', price: 10, stock: 99 },
+                { type: 'steel', price: 25, stock: 20 },
+                { type: 'bronze', price: 15, stock: 30 },
+                { type: 'mithril', price: 100, stock: 5 },
+                { type: 'damascus', price: 150, stock: 3 }
+            ],
+            tools: [
+                { name: 'Steel Hammer', price: 200, owned: false },
+                { name: 'Master Hammer', price: 500, owned: false },
+                { name: 'Fine Tongs', price: 150, owned: false }
+            ]
+        };
+
+        // Achievement system
+        this.achievements = {
+            firstWeapon: { name: 'First Forge', desc: 'Forge your first weapon', unlocked: false },
+            tenWeapons: { name: 'Apprentice Smith', desc: 'Forge 10 weapons', unlocked: false },
+            fiftyWeapons: { name: 'Journeyman', desc: 'Forge 50 weapons', unlocked: false },
+            hundredWeapons: { name: 'Master Blacksmith', desc: 'Forge 100 weapons', unlocked: false },
+            firstRare: { name: 'Quality Crafts', desc: 'Forge a Rare weapon', unlocked: false },
+            firstSuperior: { name: 'Superior Work', desc: 'Forge a Superior weapon', unlocked: false },
+            firstMasterwork: { name: 'Masterwork', desc: 'Forge a Masterwork weapon', unlocked: false },
+            legendary: { name: 'Legendary Smith', desc: 'Forge a Legendary weapon', unlocked: false },
+            richSmith: { name: 'Prosperous', desc: 'Earn 1000 gold', unlocked: false },
+            wealthySmith: { name: 'Wealthy', desc: 'Earn 10000 gold', unlocked: false },
+            allMetals: { name: 'Metallurgist', desc: 'Work with all metal types', unlocked: false },
+            perfectHeat: { name: 'Heat Master', desc: 'Strike 100 times at perfect heat', unlocked: false }
+        };
+        this.totalWeaponsForged = 0;
+        this.totalMoneyEarned = 0;
+        this.perfectHeatStrikes = 0;
+        this.metalsWorked = new Set();
+
+        // Forge bellows
+        this.bellows = null;
+        this.bellowsActive = false;
+        this.forgeHeatBoost = 0;
+
+        // Weapon display rack
+        this.displayedWeapons = [];
+        this.weaponRack = null
 
         // Event listener references for cleanup
         this.eventListeners = {
@@ -141,10 +199,149 @@ class ForgeHands {
         this.createWorld();
         this.createHands();
         this.createTools();
+        this.createWorkshopFeatures(); // NEW: Additional workshop elements
         this.setupEventListeners();
         this.initAudio();
         this.loadGameState();
         this.animate();
+    }
+
+    createWorkshopFeatures() {
+        // Create forge bellows
+        this.createBellows();
+
+        // Create weapon display rack
+        this.createWeaponRack();
+
+        // Create workbench
+        this.createWorkbench();
+
+        // Water is now added inside createQuenchTub()
+
+        // Create coal pile near forge
+        this.createCoalPile();
+    }
+
+    createBellows() {
+        const bellowsGroup = new THREE.Group();
+
+        // Bellows body
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(0.4, 0.3, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.8 })
+        );
+        bellowsGroup.add(body);
+
+        // Nozzle
+        const nozzle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.05, 0.3, 8),
+            new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.8 })
+        );
+        nozzle.rotation.z = Math.PI / 2;
+        nozzle.position.set(0.35, 0, 0);
+        bellowsGroup.add(nozzle);
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8),
+            new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.7 })
+        );
+        handle.position.set(-0.1, 0.25, 0);
+        bellowsGroup.add(handle);
+
+        bellowsGroup.position.set(-3.5, 0.5, 0.8);
+        bellowsGroup.userData.type = 'bellows';
+        bellowsGroup.userData.grabbable = true;
+
+        this.scene.add(bellowsGroup);
+        this.bellows = bellowsGroup;
+    }
+
+    createWeaponRack() {
+        const rackGroup = new THREE.Group();
+
+        // Back board
+        const backBoard = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 1.2, 0.05),
+            new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.8 })
+        );
+        backBoard.position.y = 0.6;
+        rackGroup.add(backBoard);
+
+        // Horizontal bars for holding weapons
+        for (let i = 0; i < 3; i++) {
+            const bar = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.02, 0.02, 1.4, 8),
+                new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.6 })
+            );
+            bar.rotation.z = Math.PI / 2;
+            bar.position.set(0, 0.3 + i * 0.35, 0.08);
+            rackGroup.add(bar);
+        }
+
+        rackGroup.position.set(4, 0, -3);
+        rackGroup.rotation.y = -Math.PI / 4;
+        this.scene.add(rackGroup);
+        this.weaponRack = rackGroup;
+    }
+
+    createWorkbench() {
+        const benchGroup = new THREE.Group();
+
+        // Table top
+        const top = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 0.1, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.7 })
+        );
+        top.position.y = 0.85;
+        top.castShadow = true;
+        top.receiveShadow = true;
+        benchGroup.add(top);
+
+        // Legs
+        for (let x = -0.6; x <= 0.6; x += 1.2) {
+            for (let z = -0.3; z <= 0.3; z += 0.6) {
+                const leg = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.1, 0.8, 0.1),
+                    new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.8 })
+                );
+                leg.position.set(x, 0.4, z);
+                leg.castShadow = true;
+                benchGroup.add(leg);
+            }
+        }
+
+        benchGroup.position.set(3, 0, 2);
+        this.scene.add(benchGroup);
+    }
+
+    createCoalPile() {
+        // Coal pile near forge
+        const coalGroup = new THREE.Group();
+
+        for (let i = 0; i < 15; i++) {
+            const coal = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.05 + Math.random() * 0.05),
+                new THREE.MeshStandardMaterial({
+                    color: 0x1a1a1a,
+                    roughness: 0.9
+                })
+            );
+            coal.position.set(
+                (Math.random() - 0.5) * 0.4,
+                Math.random() * 0.15,
+                (Math.random() - 0.5) * 0.4
+            );
+            coal.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+            coalGroup.add(coal);
+        }
+
+        coalGroup.position.set(-3.8, 0, -0.5);
+        this.scene.add(coalGroup);
     }
 
     initAudio() {
@@ -364,51 +561,278 @@ class ForgeHands {
     }
 
     setupRenderer() {
-        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer = new THREE.WebGLRenderer({
+            antialias: true,
+            powerPreference: 'high-performance',
+            stencil: false
+        });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        // High quality shadow settings
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.renderer.shadowMap.autoUpdate = true;
+
+        // Enhanced tone mapping for realistic lighting
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.2;
+        this.renderer.toneMappingExposure = 1.0;
         this.renderer.physicallyCorrectLights = true;
         this.renderer.outputEncoding = THREE.sRGBEncoding;
 
+        // Enable logarithmic depth buffer for better depth precision
+        this.renderer.logarithmicDepthBuffer = true;
+
         document.getElementById('game-container').appendChild(this.renderer.domElement);
+
+        // Create environment map for realistic reflections
+        this.createEnvironmentMap();
+
+        // Setup post-processing
+        this.setupPostProcessing();
+    }
+
+    createEnvironmentMap() {
+        // Create a procedural environment map for forge atmosphere
+        const pmremGenerator = new THREE.PMREMGenerator(this.renderer);
+        pmremGenerator.compileEquirectangularShader();
+
+        // Create a warm forge-like environment
+        const envScene = new THREE.Scene();
+
+        // Gradient background - dark with warm highlights
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Create gradient
+        const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+        gradient.addColorStop(0, '#ff6622');
+        gradient.addColorStop(0.3, '#442211');
+        gradient.addColorStop(0.7, '#221108');
+        gradient.addColorStop(1, '#110804');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 512, 512);
+
+        // Add some noise for realism
+        const imageData = ctx.getImageData(0, 0, 512, 512);
+        for (let i = 0; i < imageData.data.length; i += 4) {
+            const noise = (Math.random() - 0.5) * 10;
+            imageData.data[i] = Math.max(0, Math.min(255, imageData.data[i] + noise));
+            imageData.data[i + 1] = Math.max(0, Math.min(255, imageData.data[i + 1] + noise));
+            imageData.data[i + 2] = Math.max(0, Math.min(255, imageData.data[i + 2] + noise));
+        }
+        ctx.putImageData(imageData, 0, 0);
+
+        const envTexture = new THREE.CanvasTexture(canvas);
+        envTexture.mapping = THREE.EquirectangularReflectionMapping;
+
+        this.scene.environment = pmremGenerator.fromEquirectangular(envTexture).texture;
+        this.scene.background = new THREE.Color(0x110804);
+
+        pmremGenerator.dispose();
+        envTexture.dispose();
+    }
+
+    setupPostProcessing() {
+        // Store composer for post-processing effects
+        // We'll use a simple bloom effect via shader
+        this.bloomStrength = 0.4;
+        this.bloomEnabled = true;
+
+        // Create render targets for bloom
+        const renderTargetParams = {
+            minFilter: THREE.LinearFilter,
+            magFilter: THREE.LinearFilter,
+            format: THREE.RGBAFormat
+        };
+
+        this.bloomRenderTarget = new THREE.WebGLRenderTarget(
+            window.innerWidth / 2,
+            window.innerHeight / 2,
+            renderTargetParams
+        );
     }
 
     setupLights() {
-        // Ambient light
-        const ambient = new THREE.AmbientLight(0x2a2520, 0.3);
+        // Ambient light - very subtle for dark forge atmosphere
+        const ambient = new THREE.AmbientLight(0x1a1510, 0.15);
         this.scene.add(ambient);
+        this.ambientLight = ambient;
 
-        // Forge light (main)
-        const forgeLight = new THREE.PointLight(0xff6622, 15, 10);
-        forgeLight.position.set(-3, 1.5, 0);
+        // Hemisphere light for subtle color variation (sky/ground)
+        const hemi = new THREE.HemisphereLight(0x443322, 0x111108, 0.3);
+        this.scene.add(hemi);
+
+        // Main forge light - intense orange glow
+        const forgeLight = new THREE.PointLight(0xff4400, 25, 8);
+        forgeLight.position.set(-3, 1.2, 0);
         forgeLight.castShadow = true;
+        forgeLight.shadow.mapSize.width = 1024;
+        forgeLight.shadow.mapSize.height = 1024;
+        forgeLight.shadow.bias = -0.001;
+        forgeLight.shadow.radius = 4;
         this.scene.add(forgeLight);
         this.forgeLight = forgeLight;
 
-        // Overhead workshop light
-        const overhead = new THREE.PointLight(0xffffcc, 3, 12);
-        overhead.position.set(0, 4, 0);
-        overhead.castShadow = true;
-        this.scene.add(overhead);
+        // Secondary forge ember glow (flickering)
+        const emberLight = new THREE.PointLight(0xff2200, 8, 4);
+        emberLight.position.set(-3.2, 0.8, 0.2);
+        this.scene.add(emberLight);
+        this.emberLight = emberLight;
+
+        // Third forge light for depth
+        const forgeDepthLight = new THREE.PointLight(0xff6600, 5, 3);
+        forgeDepthLight.position.set(-2.5, 1.0, -0.3);
+        this.scene.add(forgeDepthLight);
+        this.forgeDepthLight = forgeDepthLight;
+
+        // Overhead lantern light - warm tungsten color
+        const lantern = new THREE.SpotLight(0xffcc88, 8, 15, Math.PI / 4, 0.5, 2);
+        lantern.position.set(0, 5, 0);
+        lantern.target.position.set(0, 0, 0);
+        lantern.castShadow = true;
+        lantern.shadow.mapSize.width = 2048;
+        lantern.shadow.mapSize.height = 2048;
+        lantern.shadow.bias = -0.0001;
+        lantern.shadow.radius = 2;
+        this.scene.add(lantern);
+        this.scene.add(lantern.target);
+        this.lanternLight = lantern;
+
+        // Window light - cool blue moonlight/daylight
+        const windowLight = new THREE.DirectionalLight(0x4466aa, 0.4);
+        windowLight.position.set(5, 4, 3);
+        windowLight.castShadow = true;
+        windowLight.shadow.mapSize.width = 2048;
+        windowLight.shadow.mapSize.height = 2048;
+        windowLight.shadow.camera.near = 0.5;
+        windowLight.shadow.camera.far = 20;
+        windowLight.shadow.camera.left = -10;
+        windowLight.shadow.camera.right = 10;
+        windowLight.shadow.camera.top = 10;
+        windowLight.shadow.camera.bottom = -10;
+        windowLight.shadow.bias = -0.0001;
+        this.scene.add(windowLight);
+        this.windowLight = windowLight;
+
+        // Anvil accent light - subtle rim light
+        const anvilLight = new THREE.SpotLight(0xffeedd, 3, 5, Math.PI / 6, 0.8, 2);
+        anvilLight.position.set(1, 3, 1);
+        anvilLight.target.position.set(0, 1, 0);
+        this.scene.add(anvilLight);
+        this.scene.add(anvilLight.target);
+
+        // Create visible light fixtures
+        this.createLightFixtures();
+    }
+
+    createLightFixtures() {
+        // Overhead lantern fixture
+        const lanternGroup = new THREE.Group();
+
+        // Chain links
+        for (let i = 0; i < 8; i++) {
+            const link = new THREE.Mesh(
+                new THREE.TorusGeometry(0.03, 0.008, 8, 12),
+                new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.9, roughness: 0.4 })
+            );
+            link.position.y = 5.5 - i * 0.08;
+            link.rotation.x = i % 2 === 0 ? 0 : Math.PI / 2;
+            lanternGroup.add(link);
+        }
+
+        // Lantern body
+        const lanternBody = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.15, 0.12, 0.3, 8),
+            new THREE.MeshStandardMaterial({
+                color: 0x1a1a1a,
+                metalness: 0.8,
+                roughness: 0.3
+            })
+        );
+        lanternBody.position.y = 4.8;
+        lanternGroup.add(lanternBody);
+
+        // Lantern glass (emissive)
+        const lanternGlass = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.1, 0.1, 0.2, 8),
+            new THREE.MeshStandardMaterial({
+                color: 0xffcc88,
+                emissive: 0xffaa44,
+                emissiveIntensity: 0.8,
+                transparent: true,
+                opacity: 0.9
+            })
+        );
+        lanternGlass.position.y = 4.8;
+        lanternGroup.add(lanternGlass);
+
+        this.scene.add(lanternGroup);
+
+        // Wall sconces (2 on side walls)
+        this.createWallSconce(new THREE.Vector3(-5, 2.5, -4), Math.PI / 4);
+        this.createWallSconce(new THREE.Vector3(5, 2.5, -4), -Math.PI / 4);
+    }
+
+    createWallSconce(position, rotationY) {
+        const sconceGroup = new THREE.Group();
+
+        // Bracket
+        const bracket = new THREE.Mesh(
+            new THREE.BoxGeometry(0.05, 0.15, 0.1),
+            new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.8, roughness: 0.4 })
+        );
+        sconceGroup.add(bracket);
+
+        // Arm
+        const arm = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.015, 0.2, 8),
+            new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.8, roughness: 0.4 })
+        );
+        arm.rotation.z = Math.PI / 2;
+        arm.position.set(0.1, 0, 0);
+        sconceGroup.add(arm);
+
+        // Flame holder
+        const holder = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.03, 0.08, 8),
+            new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.7, roughness: 0.5 })
+        );
+        holder.position.set(0.2, 0, 0);
+        sconceGroup.add(holder);
+
+        // Flame (emissive cone)
+        const flame = new THREE.Mesh(
+            new THREE.ConeGeometry(0.025, 0.06, 8),
+            new THREE.MeshStandardMaterial({
+                color: 0xff8844,
+                emissive: 0xff6622,
+                emissiveIntensity: 1.5,
+                transparent: true,
+                opacity: 0.9
+            })
+        );
+        flame.position.set(0.2, 0.06, 0);
+        sconceGroup.add(flame);
+
+        // Point light for sconce
+        const sconceLight = new THREE.PointLight(0xff8844, 2, 5);
+        sconceLight.position.set(0.2, 0.1, 0);
+        sconceGroup.add(sconceLight);
+
+        sconceGroup.position.copy(position);
+        sconceGroup.rotation.y = rotationY;
+        this.scene.add(sconceGroup);
     }
 
     createWorld() {
-        // Floor
-        const floor = new THREE.Mesh(
-            new THREE.PlaneGeometry(30, 30),
-            new THREE.MeshStandardMaterial({
-                color: 0x2a2a2a,
-                roughness: 0.9,
-                metalness: 0.1
-            })
-        );
-        floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true;
-        this.scene.add(floor);
+        // Create detailed stone floor
+        this.createFloor();
+
+        // Create workshop walls
+        this.createWalls();
 
         // Anvil
         this.createAnvil();
@@ -418,44 +842,278 @@ class ForgeHands {
 
         // Quench tub
         this.createQuenchTub();
+
+        // Ambient dust particles
+        this.createAmbientDust();
+    }
+
+    createFloor() {
+        // Stone floor with procedural texture
+        const floorSize = 20;
+        const floorGroup = new THREE.Group();
+
+        // Create stone tiles procedurally
+        const tileSize = 1.0;
+        for (let x = -floorSize / 2; x < floorSize / 2; x += tileSize) {
+            for (let z = -floorSize / 2; z < floorSize / 2; z += tileSize) {
+                // Vary stone colors slightly
+                const colorVariation = 0.8 + Math.random() * 0.4;
+                const baseColor = new THREE.Color(0x3a3530);
+                baseColor.multiplyScalar(colorVariation);
+
+                const tile = new THREE.Mesh(
+                    new THREE.BoxGeometry(
+                        tileSize - 0.02,
+                        0.08 + Math.random() * 0.03,
+                        tileSize - 0.02
+                    ),
+                    new THREE.MeshStandardMaterial({
+                        color: baseColor,
+                        roughness: 0.85 + Math.random() * 0.1,
+                        metalness: 0.05
+                    })
+                );
+                tile.position.set(
+                    x + tileSize / 2 + (Math.random() - 0.5) * 0.02,
+                    -0.04,
+                    z + tileSize / 2 + (Math.random() - 0.5) * 0.02
+                );
+                tile.receiveShadow = true;
+                tile.castShadow = true;
+                floorGroup.add(tile);
+            }
+        }
+
+        // Grout/dirt between stones
+        const grout = new THREE.Mesh(
+            new THREE.PlaneGeometry(floorSize, floorSize),
+            new THREE.MeshStandardMaterial({
+                color: 0x1a1815,
+                roughness: 1.0,
+                metalness: 0
+            })
+        );
+        grout.rotation.x = -Math.PI / 2;
+        grout.position.y = -0.1;
+        grout.receiveShadow = true;
+        floorGroup.add(grout);
+
+        this.scene.add(floorGroup);
+    }
+
+    createWalls() {
+        const wallMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2a2520,
+            roughness: 0.9,
+            metalness: 0.05
+        });
+
+        const wallHeight = 4;
+        const wallLength = 12;
+
+        // Back wall
+        const backWall = new THREE.Mesh(
+            new THREE.BoxGeometry(wallLength, wallHeight, 0.3),
+            wallMaterial.clone()
+        );
+        backWall.position.set(0, wallHeight / 2, -6);
+        backWall.receiveShadow = true;
+        backWall.castShadow = true;
+        this.scene.add(backWall);
+
+        // Left wall with window opening
+        const leftWall = new THREE.Group();
+        const leftWallLower = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 2, wallLength),
+            wallMaterial.clone()
+        );
+        leftWallLower.position.set(-6, 1, 0);
+        leftWall.add(leftWallLower);
+
+        const leftWallUpper = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, 1.5, wallLength),
+            wallMaterial.clone()
+        );
+        leftWallUpper.position.set(-6, 3.25, 0);
+        leftWall.add(leftWallUpper);
+
+        leftWall.children.forEach(c => {
+            c.receiveShadow = true;
+            c.castShadow = true;
+        });
+        this.scene.add(leftWall);
+
+        // Right wall
+        const rightWall = new THREE.Mesh(
+            new THREE.BoxGeometry(0.3, wallHeight, wallLength),
+            wallMaterial.clone()
+        );
+        rightWall.position.set(6, wallHeight / 2, 0);
+        rightWall.receiveShadow = true;
+        rightWall.castShadow = true;
+        this.scene.add(rightWall);
+
+        // Add wooden beams
+        this.createWoodenBeams();
+    }
+
+    createWoodenBeams() {
+        const beamMaterial = new THREE.MeshStandardMaterial({
+            color: 0x3a2510,
+            roughness: 0.8,
+            metalness: 0.05
+        });
+
+        // Ceiling beams
+        for (let i = -4; i <= 4; i += 2) {
+            const beam = new THREE.Mesh(
+                new THREE.BoxGeometry(12, 0.2, 0.25),
+                beamMaterial.clone()
+            );
+            beam.position.set(0, 3.9, i);
+            beam.castShadow = true;
+            beam.receiveShadow = true;
+            this.scene.add(beam);
+        }
+
+        // Support posts
+        const postPositions = [
+            [-5.8, -5.8], [-5.8, 5.8], [5.8, -5.8], [5.8, 5.8]
+        ];
+        postPositions.forEach(([x, z]) => {
+            const post = new THREE.Mesh(
+                new THREE.BoxGeometry(0.2, 4, 0.2),
+                beamMaterial.clone()
+            );
+            post.position.set(x, 2, z);
+            post.castShadow = true;
+            this.scene.add(post);
+        });
+    }
+
+    createAmbientDust() {
+        // Floating dust particles
+        const dustCount = 200;
+        const dustGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(dustCount * 3);
+        const sizes = new Float32Array(dustCount);
+
+        for (let i = 0; i < dustCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 15;
+            positions[i * 3 + 1] = Math.random() * 4;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 15;
+            sizes[i] = 0.02 + Math.random() * 0.03;
+        }
+
+        dustGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        dustGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+        const dustMaterial = new THREE.PointsMaterial({
+            color: 0xffddaa,
+            size: 0.03,
+            transparent: true,
+            opacity: 0.4,
+            sizeAttenuation: true
+        });
+
+        this.dustParticles = new THREE.Points(dustGeometry, dustMaterial);
+        this.scene.add(this.dustParticles);
     }
 
     createAnvil() {
         const anvilGroup = new THREE.Group();
 
-        // Base
-        const base = new THREE.Mesh(
-            new THREE.BoxGeometry(0.6, 0.3, 0.6),
-            new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8, roughness: 0.3 })
-        );
-        base.position.y = 0.15;
-        base.castShadow = true;
-        anvilGroup.add(base);
+        // High quality anvil material - worn steel with use marks
+        const anvilMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2a2a2a,
+            metalness: 0.95,
+            roughness: 0.25,
+            envMapIntensity: 1.2
+        });
 
-        // Horn
-        const horn = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.05, 0.15, 0.4, 8),
-            new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.9, roughness: 0.2 })
+        // Wooden stump base
+        const stump = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.35, 0.4, 0.7, 12),
+            new THREE.MeshStandardMaterial({
+                color: 0x3a2810,
+                roughness: 0.9,
+                metalness: 0.0
+            })
         );
-        horn.rotation.z = Math.PI / 2;
-        horn.position.set(0.25, 0.45, 0);
+        stump.position.y = 0.35;
+        stump.castShadow = true;
+        stump.receiveShadow = true;
+        anvilGroup.add(stump);
+
+        // Anvil body - tapered shape
+        const bodyGeom = new THREE.BoxGeometry(0.5, 0.2, 0.35);
+        const body = new THREE.Mesh(bodyGeom, anvilMaterial.clone());
+        body.position.y = 0.8;
+        body.castShadow = true;
+        anvilGroup.add(body);
+
+        // Anvil face (working surface) - polished from use
+        const faceMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4a4a4a,
+            metalness: 0.98,
+            roughness: 0.15,
+            envMapIntensity: 1.5
+        });
+        const face = new THREE.Mesh(
+            new THREE.BoxGeometry(0.45, 0.08, 0.32),
+            faceMaterial
+        );
+        face.position.y = 0.94;
+        face.castShadow = true;
+        anvilGroup.add(face);
+
+        // Step (smaller working surface)
+        const step = new THREE.Mesh(
+            new THREE.BoxGeometry(0.15, 0.12, 0.32),
+            anvilMaterial.clone()
+        );
+        step.position.set(-0.25, 0.86, 0);
+        step.castShadow = true;
+        anvilGroup.add(step);
+
+        // Horn - conical tapered shape
+        const hornGeom = new THREE.ConeGeometry(0.12, 0.45, 16);
+        const horn = new THREE.Mesh(hornGeom, anvilMaterial.clone());
+        horn.rotation.z = -Math.PI / 2;
+        horn.position.set(0.48, 0.88, 0);
         horn.castShadow = true;
         anvilGroup.add(horn);
 
-        // Flat surface
-        const surface = new THREE.Mesh(
-            new THREE.BoxGeometry(0.4, 0.15, 0.3),
-            new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.9, roughness: 0.2 })
+        // Heel (back end)
+        const heel = new THREE.Mesh(
+            new THREE.BoxGeometry(0.12, 0.15, 0.28),
+            anvilMaterial.clone()
         );
-        surface.position.y = 0.375;
-        surface.castShadow = true;
-        anvilGroup.add(surface);
+        heel.position.set(-0.3, 0.78, 0);
+        heel.castShadow = true;
+        anvilGroup.add(heel);
 
-        anvilGroup.position.set(0, 0.7, 0);
+        // Hardy hole
+        const hardyHole = new THREE.Mesh(
+            new THREE.BoxGeometry(0.04, 0.1, 0.04),
+            new THREE.MeshStandardMaterial({ color: 0x0a0a0a })
+        );
+        hardyHole.position.set(-0.1, 0.94, 0);
+        anvilGroup.add(hardyHole);
+
+        // Pritchel hole
+        const pritchelHole = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.015, 0.1, 8),
+            new THREE.MeshStandardMaterial({ color: 0x0a0a0a })
+        );
+        pritchelHole.position.set(-0.15, 0.94, 0.08);
+        anvilGroup.add(pritchelHole);
+
+        anvilGroup.position.set(0, 0, 0);
         this.scene.add(anvilGroup);
         this.anvil = anvilGroup;
 
-        // Anvil snap zone (invisible)
+        // Anvil snap zone
         this.anvilSnapZone = {
             min: new THREE.Vector3(-0.2, 0.9, -0.15),
             max: new THREE.Vector3(0.2, 1.3, 0.15)
@@ -465,27 +1123,137 @@ class ForgeHands {
     createForge() {
         const forgeGroup = new THREE.Group();
 
-        // Main body
-        const body = new THREE.Mesh(
-            new THREE.BoxGeometry(1.5, 1.2, 0.8),
-            new THREE.MeshStandardMaterial({ color: 0x3a2010, roughness: 0.8 })
-        );
-        body.position.y = 0.6;
-        body.castShadow = true;
-        forgeGroup.add(body);
+        // Brick forge body
+        const brickMaterial = new THREE.MeshStandardMaterial({
+            color: 0x5a3020,
+            roughness: 0.85,
+            metalness: 0.05
+        });
 
-        // Opening (glowing)
-        const opening = new THREE.Mesh(
-            new THREE.PlaneGeometry(0.6, 0.4),
+        // Main forge body with bricks
+        const forgeWidth = 1.8;
+        const forgeDepth = 1.2;
+        const forgeHeight = 1.0;
+
+        // Create brick pattern
+        const brickRows = 8;
+        const brickCols = 12;
+        for (let row = 0; row < brickRows; row++) {
+            for (let col = 0; col < brickCols; col++) {
+                // Skip bricks where opening is
+                const isOpening = row >= 3 && row <= 6 && col >= 4 && col <= 7;
+                if (isOpening) continue;
+
+                const brickColor = new THREE.Color(0x5a3020);
+                brickColor.multiplyScalar(0.85 + Math.random() * 0.3);
+
+                const brick = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.14, 0.11, 0.08),
+                    new THREE.MeshStandardMaterial({
+                        color: brickColor,
+                        roughness: 0.85 + Math.random() * 0.1,
+                        metalness: 0.02
+                    })
+                );
+                brick.position.set(
+                    -forgeWidth / 2 + 0.08 + col * 0.15 + (row % 2) * 0.075,
+                    0.06 + row * 0.12,
+                    forgeDepth / 2
+                );
+                brick.castShadow = true;
+                forgeGroup.add(brick);
+            }
+        }
+
+        // Forge interior - black void
+        const interior = new THREE.Mesh(
+            new THREE.BoxGeometry(forgeWidth - 0.3, forgeHeight - 0.2, forgeDepth - 0.2),
             new THREE.MeshStandardMaterial({
-                color: 0xff3300,
-                emissive: 0xff3300,
-                emissiveIntensity: 2
+                color: 0x0a0505,
+                roughness: 1,
+                metalness: 0
             })
         );
-        opening.position.set(0, 0.6, 0.41);
-        forgeGroup.add(opening);
-        this.forgeOpening = opening;
+        interior.position.set(0, forgeHeight / 2, 0);
+        forgeGroup.add(interior);
+
+        // Glowing coals at bottom
+        const coalBed = new THREE.Mesh(
+            new THREE.PlaneGeometry(1.2, 0.8),
+            new THREE.MeshStandardMaterial({
+                color: 0xff2200,
+                emissive: 0xff4400,
+                emissiveIntensity: 3,
+                roughness: 0.5
+            })
+        );
+        coalBed.rotation.x = -Math.PI / 2;
+        coalBed.position.set(0, 0.25, 0);
+        forgeGroup.add(coalBed);
+        this.coalBed = coalBed;
+
+        // Individual glowing coal pieces
+        for (let i = 0; i < 25; i++) {
+            const coalPiece = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.04 + Math.random() * 0.04),
+                new THREE.MeshStandardMaterial({
+                    color: 0xff3300,
+                    emissive: 0xff2200,
+                    emissiveIntensity: 2 + Math.random() * 2,
+                    roughness: 0.6
+                })
+            );
+            coalPiece.position.set(
+                (Math.random() - 0.5) * 1.0,
+                0.28 + Math.random() * 0.1,
+                (Math.random() - 0.5) * 0.6
+            );
+            coalPiece.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+            forgeGroup.add(coalPiece);
+        }
+
+        // Metal rim around top
+        const rim = new THREE.Mesh(
+            new THREE.TorusGeometry(0.8, 0.04, 8, 24),
+            new THREE.MeshStandardMaterial({
+                color: 0x2a2a2a,
+                metalness: 0.9,
+                roughness: 0.3
+            })
+        );
+        rim.rotation.x = Math.PI / 2;
+        rim.position.y = forgeHeight;
+        rim.castShadow = true;
+        forgeGroup.add(rim);
+
+        // Chimney hood
+        const hoodGroup = new THREE.Group();
+        const hood = new THREE.Mesh(
+            new THREE.ConeGeometry(0.9, 0.8, 6),
+            new THREE.MeshStandardMaterial({
+                color: 0x1a1a1a,
+                metalness: 0.7,
+                roughness: 0.4
+            })
+        );
+        hood.position.y = forgeHeight + 0.4;
+        hoodGroup.add(hood);
+
+        const chimney = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.25, 0.35, 1.5, 8),
+            new THREE.MeshStandardMaterial({
+                color: 0x1a1a1a,
+                metalness: 0.6,
+                roughness: 0.5
+            })
+        );
+        chimney.position.y = forgeHeight + 1.5;
+        chimney.castShadow = true;
+        hoodGroup.add(chimney);
+        forgeGroup.add(hoodGroup);
+
+        // Ember particles inside forge
+        this.createForgeEmbers(forgeGroup);
 
         forgeGroup.position.set(-3, 0, 0);
         this.scene.add(forgeGroup);
@@ -493,15 +1261,116 @@ class ForgeHands {
         this.forgeOpen = true;
     }
 
+    createForgeEmbers(forgeGroup) {
+        // Floating ember particles
+        const emberCount = 30;
+        const emberGeometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(emberCount * 3);
+        const colors = new Float32Array(emberCount * 3);
+
+        for (let i = 0; i < emberCount; i++) {
+            positions[i * 3] = (Math.random() - 0.5) * 0.8;
+            positions[i * 3 + 1] = 0.3 + Math.random() * 0.8;
+            positions[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+
+            const brightness = 0.8 + Math.random() * 0.2;
+            colors[i * 3] = brightness;
+            colors[i * 3 + 1] = brightness * 0.3;
+            colors[i * 3 + 2] = 0;
+        }
+
+        emberGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        emberGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const emberMaterial = new THREE.PointsMaterial({
+            size: 0.03,
+            vertexColors: true,
+            transparent: true,
+            opacity: 0.9,
+            sizeAttenuation: true
+        });
+
+        const embers = new THREE.Points(emberGeometry, emberMaterial);
+        forgeGroup.add(embers);
+        this.forgeEmbers = embers;
+    }
+
     createQuenchTub() {
-        const tub = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.4, 0.35, 0.5, 16),
-            new THREE.MeshStandardMaterial({ color: 0x1a3a4a, roughness: 0.3, metalness: 0.6 })
+        const tubGroup = new THREE.Group();
+
+        // Wooden barrel with metal bands
+        const staveCount = 16;
+        for (let i = 0; i < staveCount; i++) {
+            const angle = (i / staveCount) * Math.PI * 2;
+            const stave = new THREE.Mesh(
+                new THREE.BoxGeometry(0.06, 0.55, 0.15),
+                new THREE.MeshStandardMaterial({
+                    color: new THREE.Color(0x3a2510).multiplyScalar(0.9 + Math.random() * 0.2),
+                    roughness: 0.8,
+                    metalness: 0.05
+                })
+            );
+            stave.position.set(
+                Math.cos(angle) * 0.35,
+                0.275,
+                Math.sin(angle) * 0.35
+            );
+            stave.rotation.y = angle;
+            stave.castShadow = true;
+            tubGroup.add(stave);
+        }
+
+        // Metal bands
+        const bandMaterial = new THREE.MeshStandardMaterial({
+            color: 0x2a2a2a,
+            metalness: 0.9,
+            roughness: 0.35
+        });
+
+        const topBand = new THREE.Mesh(
+            new THREE.TorusGeometry(0.38, 0.02, 8, 24),
+            bandMaterial
         );
-        tub.position.set(2, 0.25, 0);
-        tub.castShadow = true;
-        this.scene.add(tub);
-        this.quenchTub = tub;
+        topBand.rotation.x = Math.PI / 2;
+        topBand.position.y = 0.5;
+        topBand.castShadow = true;
+        tubGroup.add(topBand);
+
+        const midBand = new THREE.Mesh(
+            new THREE.TorusGeometry(0.36, 0.02, 8, 24),
+            bandMaterial.clone()
+        );
+        midBand.rotation.x = Math.PI / 2;
+        midBand.position.y = 0.3;
+        tubGroup.add(midBand);
+
+        const bottomBand = new THREE.Mesh(
+            new THREE.TorusGeometry(0.34, 0.02, 8, 24),
+            bandMaterial.clone()
+        );
+        bottomBand.rotation.x = Math.PI / 2;
+        bottomBand.position.y = 0.1;
+        tubGroup.add(bottomBand);
+
+        // Water surface with subtle waves
+        const waterGeom = new THREE.CircleGeometry(0.33, 32);
+        const waterMaterial = new THREE.MeshStandardMaterial({
+            color: 0x1a3a4a,
+            roughness: 0.05,
+            metalness: 0.3,
+            transparent: true,
+            opacity: 0.85,
+            envMapIntensity: 2.0
+        });
+        const water = new THREE.Mesh(waterGeom, waterMaterial);
+        water.rotation.x = -Math.PI / 2;
+        water.position.y = 0.45;
+        tubGroup.add(water);
+        this.waterSurface = water;
+
+        tubGroup.position.set(2, 0, 0);
+        this.scene.add(tubGroup);
+        this.quenchTub = tubGroup;
     }
 
     createHands() {
@@ -518,26 +1387,257 @@ class ForgeHands {
 
     createHand(side) {
         const hand = new THREE.Group();
+        const mirror = side === 'left' ? -1 : 1;
 
-        // Palm
-        const palm = new THREE.Mesh(
-            new THREE.BoxGeometry(0.08, 0.12, 0.04),
-            new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.6 })
+        // Realistic skin material with subsurface scattering approximation
+        const skinMaterial = new THREE.MeshStandardMaterial({
+            color: 0xd4a574,  // Natural skin tone
+            roughness: 0.6,
+            metalness: 0.0,
+            envMapIntensity: 0.3
+        });
+
+        // Slightly darker for creases and joints
+        const skinCreaseMaterial = new THREE.MeshStandardMaterial({
+            color: 0xc49464,
+            roughness: 0.7,
+            metalness: 0.0
+        });
+
+        // Fingernail material
+        const nailMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffe8e0,
+            roughness: 0.3,
+            metalness: 0.1,
+            envMapIntensity: 0.5
+        });
+
+        // Wrist
+        const wrist = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.028, 0.032, 0.06, 12),
+            skinMaterial.clone()
         );
-        hand.add(palm);
+        wrist.position.set(0, -0.08, 0);
+        wrist.rotation.x = Math.PI / 2;
+        hand.add(wrist);
 
-        // Fingers (simplified)
-        for (let i = 0; i < 4; i++) {
-            const finger = new THREE.Mesh(
-                new THREE.BoxGeometry(0.015, 0.05, 0.015),
-                new THREE.MeshStandardMaterial({ color: 0xffdbac, roughness: 0.6 })
+        // Palm base - organic shape using combined geometries
+        const palmBase = new THREE.Mesh(
+            new THREE.BoxGeometry(0.085, 0.045, 0.10),
+            skinMaterial.clone()
+        );
+        palmBase.position.set(0, 0, 0);
+        hand.add(palmBase);
+
+        // Palm - tapered toward fingers
+        const palmUpper = new THREE.Mesh(
+            new THREE.BoxGeometry(0.08, 0.04, 0.05),
+            skinMaterial.clone()
+        );
+        palmUpper.position.set(0, 0, 0.06);
+        hand.add(palmUpper);
+
+        // Thenar eminence (thumb muscle pad)
+        const thenar = new THREE.Mesh(
+            new THREE.SphereGeometry(0.025, 12, 12),
+            skinMaterial.clone()
+        );
+        thenar.scale.set(1, 0.6, 1.2);
+        thenar.position.set(mirror * 0.035, 0.01, -0.015);
+        hand.add(thenar);
+
+        // Hypothenar eminence (pinky side muscle pad)
+        const hypothenar = new THREE.Mesh(
+            new THREE.SphereGeometry(0.02, 12, 12),
+            skinMaterial.clone()
+        );
+        hypothenar.scale.set(1, 0.6, 1.3);
+        hypothenar.position.set(mirror * -0.035, 0.01, -0.01);
+        hand.add(hypothenar);
+
+        // Create detailed fingers
+        const fingerData = [
+            { name: 'index', x: mirror * 0.028, baseLength: 0.035, midLength: 0.025, tipLength: 0.022, radius: 0.009 },
+            { name: 'middle', x: mirror * 0.009, baseLength: 0.04, midLength: 0.028, tipLength: 0.024, radius: 0.0095 },
+            { name: 'ring', x: mirror * -0.01, baseLength: 0.037, midLength: 0.026, tipLength: 0.022, radius: 0.009 },
+            { name: 'pinky', x: mirror * -0.03, baseLength: 0.028, midLength: 0.02, tipLength: 0.018, radius: 0.007 }
+        ];
+
+        fingerData.forEach((finger, idx) => {
+            const fingerGroup = new THREE.Group();
+            fingerGroup.position.set(finger.x, 0.01, 0.085);
+
+            // Knuckle bump
+            const knuckle = new THREE.Mesh(
+                new THREE.SphereGeometry(finger.radius * 1.3, 10, 10),
+                skinCreaseMaterial.clone()
             );
-            finger.position.set(-0.03 + i * 0.02, 0.085, 0);
-            hand.add(finger);
-        }
+            knuckle.scale.set(1, 0.7, 1);
+            knuckle.position.set(0, 0.008, -0.01);
+            fingerGroup.add(knuckle);
+
+            // Proximal phalanx (base segment)
+            const proximal = new THREE.Mesh(
+                new THREE.CapsuleGeometry(finger.radius, finger.baseLength, 8, 12),
+                skinMaterial.clone()
+            );
+            proximal.position.set(0, 0, finger.baseLength / 2 + 0.005);
+            proximal.rotation.x = Math.PI / 2;
+            fingerGroup.add(proximal);
+
+            // Middle joint
+            const midJoint = new THREE.Mesh(
+                new THREE.SphereGeometry(finger.radius * 1.1, 8, 8),
+                skinCreaseMaterial.clone()
+            );
+            midJoint.position.set(0, 0, finger.baseLength + 0.008);
+            fingerGroup.add(midJoint);
+
+            // Middle phalanx
+            const middle = new THREE.Mesh(
+                new THREE.CapsuleGeometry(finger.radius * 0.9, finger.midLength, 8, 12),
+                skinMaterial.clone()
+            );
+            middle.position.set(0, 0, finger.baseLength + finger.midLength / 2 + 0.012);
+            middle.rotation.x = Math.PI / 2;
+            fingerGroup.add(middle);
+
+            // Distal joint
+            const distalJoint = new THREE.Mesh(
+                new THREE.SphereGeometry(finger.radius * 0.95, 8, 8),
+                skinCreaseMaterial.clone()
+            );
+            distalJoint.position.set(0, 0, finger.baseLength + finger.midLength + 0.016);
+            fingerGroup.add(distalJoint);
+
+            // Distal phalanx (fingertip)
+            const distal = new THREE.Mesh(
+                new THREE.CapsuleGeometry(finger.radius * 0.85, finger.tipLength, 8, 12),
+                skinMaterial.clone()
+            );
+            distal.position.set(0, 0, finger.baseLength + finger.midLength + finger.tipLength / 2 + 0.02);
+            distal.rotation.x = Math.PI / 2;
+            fingerGroup.add(distal);
+
+            // Fingertip pad
+            const pad = new THREE.Mesh(
+                new THREE.SphereGeometry(finger.radius * 0.9, 8, 8),
+                skinMaterial.clone()
+            );
+            pad.scale.set(1, 0.6, 1);
+            pad.position.set(0, -0.004, finger.baseLength + finger.midLength + finger.tipLength + 0.02);
+            fingerGroup.add(pad);
+
+            // Fingernail
+            const nail = new THREE.Mesh(
+                new THREE.BoxGeometry(finger.radius * 1.6, 0.002, finger.tipLength * 0.7),
+                nailMaterial.clone()
+            );
+            nail.position.set(0, finger.radius * 0.7, finger.baseLength + finger.midLength + finger.tipLength + 0.015);
+            fingerGroup.add(nail);
+
+            hand.add(fingerGroup);
+            hand.userData[finger.name + 'Finger'] = fingerGroup;
+        });
+
+        // Thumb - anatomically correct with 3 segments
+        const thumbGroup = new THREE.Group();
+        thumbGroup.position.set(mirror * 0.045, 0, -0.02);
+        thumbGroup.rotation.z = mirror * -0.5;
+        thumbGroup.rotation.y = mirror * 0.4;
+
+        // Thumb metacarpal
+        const thumbMeta = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.012, 0.025, 8, 12),
+            skinMaterial.clone()
+        );
+        thumbMeta.rotation.x = Math.PI / 2;
+        thumbMeta.position.set(0, 0.01, 0.02);
+        thumbGroup.add(thumbMeta);
+
+        // Thumb proximal phalanx
+        const thumbProx = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.011, 0.028, 8, 12),
+            skinMaterial.clone()
+        );
+        thumbProx.rotation.x = Math.PI / 2;
+        thumbProx.position.set(0, 0.01, 0.052);
+        thumbGroup.add(thumbProx);
+
+        // Thumb joint
+        const thumbJoint = new THREE.Mesh(
+            new THREE.SphereGeometry(0.012, 8, 8),
+            skinCreaseMaterial.clone()
+        );
+        thumbJoint.position.set(0, 0.01, 0.07);
+        thumbGroup.add(thumbJoint);
+
+        // Thumb distal phalanx
+        const thumbDist = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.01, 0.022, 8, 12),
+            skinMaterial.clone()
+        );
+        thumbDist.rotation.x = Math.PI / 2;
+        thumbDist.position.set(0, 0.01, 0.088);
+        thumbGroup.add(thumbDist);
+
+        // Thumb nail
+        const thumbNail = new THREE.Mesh(
+            new THREE.BoxGeometry(0.016, 0.002, 0.015),
+            nailMaterial.clone()
+        );
+        thumbNail.position.set(0, 0.02, 0.095);
+        thumbGroup.add(thumbNail);
+
+        // Thumb pad
+        const thumbPad = new THREE.Mesh(
+            new THREE.SphereGeometry(0.01, 8, 8),
+            skinMaterial.clone()
+        );
+        thumbPad.scale.set(1, 0.6, 1);
+        thumbPad.position.set(0, 0.002, 0.1);
+        thumbGroup.add(thumbPad);
+
+        hand.add(thumbGroup);
+        hand.userData.thumb = thumbGroup;
+
+        // Veins on back of hand (subtle raised lines)
+        this.addHandVeins(hand, skinCreaseMaterial, mirror);
+
+        // Enable shadows for all meshes
+        hand.traverse(obj => {
+            if (obj.isMesh) {
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+            }
+        });
 
         hand.userData.side = side;
         return hand;
+    }
+
+    addHandVeins(hand, material, mirror) {
+        // Subtle vein details on back of hand
+        const veinMaterial = material.clone();
+        veinMaterial.color.setHex(0xb89070);
+
+        // Main dorsal vein
+        const vein1 = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.002, 0.003, 0.08, 6),
+            veinMaterial
+        );
+        vein1.rotation.x = Math.PI / 2;
+        vein1.position.set(mirror * 0.01, 0.022, 0.02);
+        hand.add(vein1);
+
+        // Branch vein
+        const vein2 = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.0015, 0.002, 0.04, 6),
+            veinMaterial.clone()
+        );
+        vein2.rotation.set(Math.PI / 2, 0, mirror * 0.3);
+        vein2.position.set(mirror * -0.01, 0.02, 0.04);
+        hand.add(vein2);
     }
 
     createTools() {
@@ -686,12 +1786,23 @@ class ForgeHands {
     }
 
     createBillet(metalType = 'iron') {
+        // Metal-specific base colors
+        const metalColors = {
+            iron: 0x8a8a8a,      // Gray
+            steel: 0xa0a5aa,     // Blue-gray
+            bronze: 0xcd7f32,    // Bronze/copper
+            mithril: 0xc0d8e8,   // Silvery blue
+            damascus: 0x6a6a7a   // Dark steel with pattern
+        };
+
+        const baseColor = metalColors[metalType] || 0x8a8a8a;
+
         const billet = new THREE.Mesh(
             new THREE.BoxGeometry(0.15, 0.05, 0.3),
             new THREE.MeshStandardMaterial({
-                color: 0x8a8a8a,
+                color: baseColor,
                 metalness: 0.9,
-                roughness: 0.3
+                roughness: metalType === 'mithril' ? 0.15 : 0.3
             })
         );
         billet.position.set(-2.5, 1.2, 0);
@@ -790,11 +1901,28 @@ class ForgeHands {
             if (e.key.toLowerCase() === 'm' && this.pointerLocked) {
                 this.cycleMetalType();
             }
+            // Shop system
+            if (e.key.toLowerCase() === 'b' && this.pointerLocked) {
+                this.toggleShop();
+            }
+            // Achievements
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                this.showAchievementList();
+            }
+            // Bellows - hold E to pump
+            if (e.key.toLowerCase() === 'e' && this.pointerLocked) {
+                this.bellowsActive = true;
+            }
         };
         window.addEventListener('keydown', this.eventListeners.keydown);
 
         this.eventListeners.keyup = (e) => {
             this.keys[e.key.toLowerCase()] = false;
+            // Stop bellows when E released
+            if (e.key.toLowerCase() === 'e') {
+                this.bellowsActive = false;
+            }
         };
         window.addEventListener('keyup', this.eventListeners.keyup);
 
@@ -874,13 +2002,400 @@ class ForgeHands {
         this.updateHeatSystem(delta);
         this.updateFatigue(delta);
         this.updateSparks(delta);
+        this.updateSteam(delta);       // NEW: Steam particle system
         this.updateForgeEffects();
+        this.updateDayNightCycle(delta); // NEW: Day/night lighting
+        this.updateAmbientSounds(delta); // NEW: Ambient forge sounds
+        this.updateBellows(delta);       // NEW: Bellows heat boost
         this.checkAnvilSnap();
         this.updateGrinding(delta);
         this.updatePolishing(delta);
         this.updateHUD();
 
         this.renderer.render(this.scene, this.camera);
+    }
+
+    // ========== NEW SYSTEMS ==========
+
+    updateSteam(delta) {
+        // Update and remove old steam particles
+        for (let i = this.activeSteam.length - 1; i >= 0; i--) {
+            const steam = this.activeSteam[i];
+            steam.userData.age += delta;
+
+            // Steam rises and fades
+            steam.position.y += delta * 0.5;
+            steam.position.x += (Math.random() - 0.5) * delta * 0.2;
+            steam.position.z += (Math.random() - 0.5) * delta * 0.2;
+            steam.material.opacity = Math.max(0, 1 - steam.userData.age / steam.userData.lifetime);
+            steam.scale.multiplyScalar(1 + delta * 0.5);
+
+            if (steam.userData.age >= steam.userData.lifetime) {
+                this.scene.remove(steam);
+                steam.geometry.dispose();
+                steam.material.dispose();
+                this.activeSteam.splice(i, 1);
+            }
+        }
+    }
+
+    createSteamParticles(position, intensity) {
+        // Limit max active steam particles
+        if (this.activeSteam.length > 50) return;
+
+        for (let i = 0; i < 10 * intensity; i++) {
+            const steam = new THREE.Mesh(
+                new THREE.SphereGeometry(0.03 + Math.random() * 0.02),
+                new THREE.MeshBasicMaterial({
+                    color: 0xcccccc,
+                    transparent: true,
+                    opacity: 0.6
+                })
+            );
+            steam.position.copy(position);
+            steam.position.x += (Math.random() - 0.5) * 0.2;
+            steam.position.z += (Math.random() - 0.5) * 0.2;
+            steam.userData.lifetime = 1.5 + Math.random();
+            steam.userData.age = 0;
+            this.scene.add(steam);
+            this.activeSteam.push(steam);
+        }
+    }
+
+    updateDayNightCycle(delta) {
+        // Advance time (very slow for gameplay)
+        this.timeOfDay += delta * this.daySpeed * 0.01;
+        if (this.timeOfDay >= 1) this.timeOfDay = 0;
+
+        // Calculate sun position and light intensity
+        const sunAngle = this.timeOfDay * Math.PI * 2;
+        const sunIntensity = Math.max(0, Math.sin(sunAngle));
+
+        // Update ambient light based on time
+        const ambientIntensity = 0.1 + sunIntensity * 0.3;
+        if (this.scene.children[0] && this.scene.children[0].isAmbientLight) {
+            this.scene.children[0].intensity = ambientIntensity;
+        }
+
+        // Update sky color
+        const nightColor = new THREE.Color(0x0a0a15);
+        const dayColor = new THREE.Color(0x1a1410);
+        const currentColor = nightColor.clone().lerp(dayColor, sunIntensity);
+        this.scene.background = currentColor;
+        if (this.scene.fog) {
+            this.scene.fog.color = currentColor;
+        }
+    }
+
+    updateAmbientSounds(delta) {
+        this.lastAmbientSound += delta;
+
+        // Play ambient forge sounds periodically
+        if (this.lastAmbientSound > this.ambientSoundInterval) {
+            this.lastAmbientSound = 0;
+            this.ambientSoundInterval = 3 + Math.random() * 4;
+
+            // Random ambient sound
+            if (Math.random() < 0.3) {
+                this.playForgeAmbience();
+            }
+        }
+    }
+
+    updateBellows(delta) {
+        // Decay bellows heat boost
+        if (this.forgeHeatBoost > 0) {
+            this.forgeHeatBoost = Math.max(0, this.forgeHeatBoost - delta * 0.1);
+        }
+
+        // Check if bellows is being used
+        if (this.bellowsActive && this.bellows) {
+            this.forgeHeatBoost = Math.min(1.0, this.forgeHeatBoost + delta * 0.5);
+
+            // Visual feedback - bellows compress
+            this.bellows.scale.y = 0.7 + Math.sin(Date.now() * 0.01) * 0.1;
+
+            // Play bellows sound occasionally
+            if (Math.random() < 0.05) {
+                this.playForgeAmbience();
+            }
+        } else if (this.bellows) {
+            // Return to normal size
+            this.bellows.scale.y = THREE.MathUtils.lerp(this.bellows.scale.y, 1.0, delta * 5);
+        }
+    }
+
+    // ========== SHOP SYSTEM ==========
+
+    toggleShop() {
+        const existing = document.getElementById('shop-ui');
+        if (existing) {
+            existing.remove();
+            this.shopOpen = false;
+            return;
+        }
+
+        this.shopOpen = true;
+        const ui = document.createElement('div');
+        ui.id = 'shop-ui';
+        ui.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20,15,10,0.95);
+            color: #ffaa44;
+            padding: 25px;
+            border-radius: 10px;
+            border: 2px solid #5a4a3a;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+        `;
+
+        let html = `<h2 style="margin-top:0; color:#ffcc66;">BLACKSMITH SUPPLIES</h2>`;
+        html += `<p>Your Gold: <span style="color:#ffdd00;">$${this.money}</span></p>`;
+        html += `<hr style="border-color:#5a4a3a;">`;
+
+        // Metals section
+        html += `<h3 style="color:#aaa;">Metal Billets</h3>`;
+        this.shopInventory.metals.forEach((item, i) => {
+            const canAfford = this.money >= item.price;
+            const color = canAfford ? '#66ff66' : '#ff6666';
+            html += `<div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px;">`;
+            html += `<strong>${item.type.charAt(0).toUpperCase() + item.type.slice(1)}</strong> - $${item.price} `;
+            html += `<span style="color:#888;">(Stock: ${item.stock})</span>`;
+            if (item.stock > 0) {
+                html += ` <button onclick="window.game.buyMetal(${i})" style="margin-left:10px; padding:3px 10px; cursor:pointer; background:${color}; border:none; border-radius:3px;">Buy</button>`;
+            }
+            html += `</div>`;
+        });
+
+        html += `<hr style="border-color:#5a4a3a;">`;
+        html += `<h3 style="color:#aaa;">Tools</h3>`;
+        this.shopInventory.tools.forEach((item, i) => {
+            const canAfford = this.money >= item.price;
+            const color = canAfford ? '#66ff66' : '#ff6666';
+            html += `<div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px;">`;
+            html += `<strong>${item.name}</strong> - $${item.price}`;
+            if (item.owned) {
+                html += ` <span style="color:#66ff66;">OWNED</span>`;
+            } else {
+                html += ` <button onclick="window.game.buyTool(${i})" style="margin-left:10px; padding:3px 10px; cursor:pointer; background:${color}; border:none; border-radius:3px;">Buy</button>`;
+            }
+            html += `</div>`;
+        });
+
+        html += `<br><button onclick="document.getElementById('shop-ui').remove()" style="padding:10px 20px; cursor:pointer; background:#5a4a3a; color:#ffaa44; border:none; border-radius:5px;">Close Shop (B)</button>`;
+
+        ui.innerHTML = html;
+        document.body.appendChild(ui);
+    }
+
+    buyMetal(index) {
+        const item = this.shopInventory.metals[index];
+        if (!item || item.stock <= 0 || this.money < item.price) {
+            this.playErrorSound();
+            return;
+        }
+
+        this.money -= item.price;
+        item.stock--;
+        this.availableBillets.push(item.type);
+        this.playSuccessSound();
+        this.showFeedback(`Bought ${item.type} billet`);
+
+        // Refresh shop UI
+        this.toggleShop();
+        this.toggleShop();
+        this.saveGameState();
+    }
+
+    buyTool(index) {
+        const item = this.shopInventory.tools[index];
+        if (!item || item.owned || this.money < item.price) {
+            this.playErrorSound();
+            return;
+        }
+
+        this.money -= item.price;
+        item.owned = true;
+        this.playSuccessSound();
+        this.showFeedback(`Bought ${item.name}!`);
+
+        // Refresh shop UI
+        this.toggleShop();
+        this.toggleShop();
+        this.saveGameState();
+    }
+
+    // ========== ACHIEVEMENT SYSTEM ==========
+
+    checkAchievements() {
+        let newAchievement = null;
+
+        // Weapon count achievements
+        if (this.totalWeaponsForged >= 1 && !this.achievements.firstWeapon.unlocked) {
+            this.achievements.firstWeapon.unlocked = true;
+            newAchievement = this.achievements.firstWeapon;
+        }
+        if (this.totalWeaponsForged >= 10 && !this.achievements.tenWeapons.unlocked) {
+            this.achievements.tenWeapons.unlocked = true;
+            newAchievement = this.achievements.tenWeapons;
+        }
+        if (this.totalWeaponsForged >= 50 && !this.achievements.fiftyWeapons.unlocked) {
+            this.achievements.fiftyWeapons.unlocked = true;
+            newAchievement = this.achievements.fiftyWeapons;
+        }
+        if (this.totalWeaponsForged >= 100 && !this.achievements.hundredWeapons.unlocked) {
+            this.achievements.hundredWeapons.unlocked = true;
+            newAchievement = this.achievements.hundredWeapons;
+        }
+
+        // Money achievements
+        if (this.totalMoneyEarned >= 1000 && !this.achievements.richSmith.unlocked) {
+            this.achievements.richSmith.unlocked = true;
+            newAchievement = this.achievements.richSmith;
+        }
+        if (this.totalMoneyEarned >= 10000 && !this.achievements.wealthySmith.unlocked) {
+            this.achievements.wealthySmith.unlocked = true;
+            newAchievement = this.achievements.wealthySmith;
+        }
+
+        // Heat mastery
+        if (this.perfectHeatStrikes >= 100 && !this.achievements.perfectHeat.unlocked) {
+            this.achievements.perfectHeat.unlocked = true;
+            newAchievement = this.achievements.perfectHeat;
+        }
+
+        // All metals
+        if (this.metalsWorked.size >= 5 && !this.achievements.allMetals.unlocked) {
+            this.achievements.allMetals.unlocked = true;
+            newAchievement = this.achievements.allMetals;
+        }
+
+        if (newAchievement) {
+            this.showAchievement(newAchievement);
+        }
+    }
+
+    showAchievement(achievement) {
+        this.playSuccessSound();
+
+        const popup = document.createElement('div');
+        popup.style.cssText = `
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #4a3a20, #2a2010);
+            color: #ffcc44;
+            padding: 20px 40px;
+            border-radius: 10px;
+            border: 2px solid #ffaa44;
+            font-family: monospace;
+            text-align: center;
+            z-index: 2000;
+            animation: achievementPop 0.5s ease-out;
+        `;
+        popup.innerHTML = `
+            <div style="font-size:12px; color:#aaa;">ACHIEVEMENT UNLOCKED</div>
+            <div style="font-size:18px; margin:5px 0; color:#ffdd66;">${achievement.name}</div>
+            <div style="font-size:12px; color:#888;">${achievement.desc}</div>
+        `;
+
+        // Add animation style
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes achievementPop {
+                0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+                50% { transform: translateX(-50%) scale(1.1); }
+                100% { transform: translateX(-50%) scale(1); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        document.body.appendChild(popup);
+        setTimeout(() => popup.remove(), 4000);
+    }
+
+    showAchievementList() {
+        const existing = document.getElementById('achievement-ui');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        const ui = document.createElement('div');
+        ui.id = 'achievement-ui';
+        ui.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20,15,10,0.95);
+            color: #ffaa44;
+            padding: 25px;
+            border-radius: 10px;
+            border: 2px solid #5a4a3a;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+        `;
+
+        let html = `<h2 style="margin-top:0; color:#ffcc66;">ACHIEVEMENTS</h2>`;
+
+        let unlockedCount = 0;
+        Object.values(this.achievements).forEach(a => {
+            if (a.unlocked) unlockedCount++;
+        });
+        html += `<p>Unlocked: ${unlockedCount}/${Object.keys(this.achievements).length}</p>`;
+        html += `<hr style="border-color:#5a4a3a;">`;
+
+        Object.values(this.achievements).forEach(a => {
+            const color = a.unlocked ? '#66ff66' : '#666';
+            const icon = a.unlocked ? '★' : '☆';
+            html += `<div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px; color:${color};">`;
+            html += `<span style="font-size:16px;">${icon}</span> <strong>${a.name}</strong><br>`;
+            html += `<span style="font-size:11px; color:#888;">${a.desc}</span>`;
+            html += `</div>`;
+        });
+
+        html += `<br><button onclick="document.getElementById('achievement-ui').remove()" style="padding:10px 20px; cursor:pointer; background:#5a4a3a; color:#ffaa44; border:none; border-radius:5px;">Close</button>`;
+
+        ui.innerHTML = html;
+        document.body.appendChild(ui);
+    }
+
+    checkWeaponAchievements(rarity) {
+        // Rarity-based achievements
+        const rarityIndex = this.rarities.indexOf(rarity);
+
+        if (rarityIndex >= 3 && !this.achievements.firstRare.unlocked) {
+            this.achievements.firstRare.unlocked = true;
+            this.showAchievement(this.achievements.firstRare);
+        }
+        if (rarityIndex >= 4 && !this.achievements.firstSuperior.unlocked) {
+            this.achievements.firstSuperior.unlocked = true;
+            this.showAchievement(this.achievements.firstSuperior);
+        }
+        if (rarityIndex >= 5 && !this.achievements.firstMasterwork.unlocked) {
+            this.achievements.firstMasterwork.unlocked = true;
+            this.showAchievement(this.achievements.firstMasterwork);
+        }
+        if (rarityIndex >= 6 && !this.achievements.legendary.unlocked) {
+            this.achievements.legendary.unlocked = true;
+            this.showAchievement(this.achievements.legendary);
+        }
+
+        // Also check general achievements
+        this.checkAchievements();
     }
 
     updateFatigue(delta) {
@@ -1238,12 +2753,23 @@ class ForgeHands {
         this.advanceTraining('hammerControl', effectiveness * 0.1);
         if (heat >= 0.6 && heat <= 0.75) {
             this.advanceTraining('heatReading', 0.01);
+            // Track perfect heat strikes for achievement
+            this.perfectHeatStrikes = (this.perfectHeatStrikes || 0) + 1;
         }
 
         // Material knowledge advancement when working with rare metals
         const metalType = this.currentBillet.userData.metalType;
         if (metalType !== 'iron' && metalType !== 'bronze') {
             this.advanceTraining('materialKnowledge', 0.005);
+        }
+
+        // Track metals worked for achievement
+        if (!this.metalsWorked) this.metalsWorked = new Set();
+        this.metalsWorked.add(metalType);
+
+        // Check achievements periodically
+        if (this.strikeCount % 10 === 0) {
+            this.checkAchievements();
         }
 
         this.lastStrikeTime = currentTime;
@@ -1323,7 +2849,9 @@ class ForgeHands {
 
         // Heat INCREASES when in forge (within 1.5 units of forge center and forge is open)
         if (this.forgeOpen && distToForge < 1.5 && !this.billetAnvilLocked) {
-            const heatRate = 0.15; // 15% per second
+            const baseHeatRate = 0.15; // 15% per second
+            const bellowsBoost = this.forgeHeatBoost || 1.0; // Bellows can boost up to 2x
+            const heatRate = baseHeatRate * bellowsBoost;
             data.heat = Math.min(1.0, data.heat + heatRate * delta);
         }
 
@@ -1372,14 +2900,77 @@ class ForgeHands {
 
     updateForgeEffects() {
         const time = Date.now() * 0.001;
-        const flicker = Math.sin(time * 3) * 0.3 + Math.sin(time * 7) * 0.2;
 
+        // Multiple layered flickering for realistic fire
+        const flicker1 = Math.sin(time * 3.7) * 0.3;
+        const flicker2 = Math.sin(time * 7.3) * 0.2;
+        const flicker3 = Math.sin(time * 11.1) * 0.15;
+        const randomFlicker = (Math.random() - 0.5) * 0.1;
+        const totalFlicker = flicker1 + flicker2 + flicker3 + randomFlicker;
+
+        // Main forge light
         if (this.forgeLight) {
-            this.forgeLight.intensity = 15 + flicker * 3;
+            this.forgeLight.intensity = 25 + totalFlicker * 8;
+            // Slight color shift
+            const colorShift = 0.02 * Math.sin(time * 5);
+            this.forgeLight.color.setRGB(1, 0.27 + colorShift, 0);
         }
 
-        if (this.forgeOpening) {
-            this.forgeOpening.material.emissiveIntensity = 2 + flicker * 0.5;
+        // Ember light (faster flicker)
+        if (this.emberLight) {
+            const emberFlicker = Math.sin(time * 15) * 0.4 + Math.random() * 0.2;
+            this.emberLight.intensity = 8 + emberFlicker * 4;
+        }
+
+        // Depth light (slower pulse)
+        if (this.forgeDepthLight) {
+            const depthPulse = Math.sin(time * 1.5) * 0.3;
+            this.forgeDepthLight.intensity = 5 + depthPulse * 2;
+        }
+
+        // Coal bed glow
+        if (this.coalBed) {
+            this.coalBed.material.emissiveIntensity = 3 + totalFlicker * 1.5;
+        }
+
+        // Animate forge embers
+        if (this.forgeEmbers) {
+            const positions = this.forgeEmbers.geometry.attributes.position.array;
+            for (let i = 0; i < positions.length / 3; i++) {
+                positions[i * 3 + 1] += 0.003; // Rise
+                if (positions[i * 3 + 1] > 1.5) {
+                    positions[i * 3 + 1] = 0.3;
+                    positions[i * 3] = (Math.random() - 0.5) * 0.8;
+                    positions[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+                }
+                // Slight horizontal drift
+                positions[i * 3] += (Math.random() - 0.5) * 0.002;
+                positions[i * 3 + 2] += (Math.random() - 0.5) * 0.002;
+            }
+            this.forgeEmbers.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // Animate dust particles
+        if (this.dustParticles) {
+            const dustPositions = this.dustParticles.geometry.attributes.position.array;
+            for (let i = 0; i < dustPositions.length / 3; i++) {
+                // Slow drift
+                dustPositions[i * 3] += Math.sin(time + i) * 0.0005;
+                dustPositions[i * 3 + 1] += Math.sin(time * 0.5 + i * 0.5) * 0.0003;
+                dustPositions[i * 3 + 2] += Math.cos(time + i) * 0.0005;
+
+                // Reset if too far
+                if (Math.abs(dustPositions[i * 3]) > 8) {
+                    dustPositions[i * 3] = (Math.random() - 0.5) * 15;
+                }
+            }
+            this.dustParticles.geometry.attributes.position.needsUpdate = true;
+        }
+
+        // Lantern light subtle flicker
+        if (this.lanternLight) {
+            const lanternFlicker = Math.sin(time * 8) * 0.1 + Math.random() * 0.05;
+            this.lanternLight.intensity = 8 + lanternFlicker * 2;
         }
     }
 
@@ -1458,6 +3049,15 @@ class ForgeHands {
                 this.training = data.trainingLevels || this.training;
                 this.grindingUnlocked = data.unlocks?.grindingUnlocked || false;
                 this.polishingUnlocked = data.unlocks?.polishingUnlocked || false;
+                this.rareWeaponsForged = data.rareWeaponsForged || 0;
+                // Restore achievement tracking
+                this.totalWeaponsForged = data.totalWeaponsForged || 0;
+                this.totalMoneyEarned = data.totalMoneyEarned || 0;
+                this.perfectHeatStrikes = data.perfectHeatStrikes || 0;
+                this.metalsWorked = new Set(data.metalsWorked || []);
+                if (data.achievements) {
+                    Object.assign(this.achievements, data.achievements);
+                }
             }
         } catch (err) {
             console.log('No backend available, using local state');
@@ -1473,7 +3073,13 @@ class ForgeHands {
                 grindingUnlocked: this.grindingUnlocked,
                 polishingUnlocked: this.polishingUnlocked
             },
-            rareWeaponsForged: this.rareWeaponsForged
+            rareWeaponsForged: this.rareWeaponsForged,
+            // Achievement tracking
+            totalWeaponsForged: this.totalWeaponsForged,
+            totalMoneyEarned: this.totalMoneyEarned,
+            perfectHeatStrikes: this.perfectHeatStrikes,
+            metalsWorked: Array.from(this.metalsWorked || []),
+            achievements: this.achievements
         };
 
         try {
@@ -1551,6 +3157,10 @@ class ForgeHands {
 
         // Add to inventory
         this.inventory.push(weapon);
+
+        // Track total weapons forged and check achievements
+        this.totalWeaponsForged = (this.totalWeaponsForged || 0) + 1;
+        this.checkWeaponAchievements(rarity);
 
         // Training advancement
         this.advanceTraining('precisionForging', quality * 0.01);
@@ -1646,6 +3256,11 @@ class ForgeHands {
 
         // Play quench sound
         this.playQuenchSound();
+
+        // Create steam particles based on heat intensity
+        if (heatBefore > 0.3) {
+            this.createSteamParticles(this.quenchTub.position.clone().setY(1.0), heatBefore);
+        }
 
         // Quenching rapidly cools the billet
         data.heat = Math.max(0, data.heat - 0.5);
@@ -1907,7 +3522,11 @@ class ForgeHands {
 
         const weapon = this.inventory[index];
         this.money += weapon.value;
+        this.totalMoneyEarned = (this.totalMoneyEarned || 0) + weapon.value;
         this.inventory.splice(index, 1);
+
+        // Check money achievements
+        this.checkAchievements();
 
         this.saveGameState();
         this.showFeedback(`Sold ${weapon.rarity} ${weapon.type} for $${weapon.value}`);
@@ -1958,11 +3577,17 @@ class ForgeHands {
             html += `<div style="color:#666; font-size:10px;">Rare weapons forged: ${this.rareWeaponsForged}/5</div>`;
         }
 
+        // Show bellows status when active
+        if (this.bellowsActive && this.forgeHeatBoost > 1.0) {
+            html += `<div style="color:#ff8844">BELLOWS ACTIVE (${((this.forgeHeatBoost - 1) * 100).toFixed(0)}% boost)</div>`;
+        }
+
         html += `<br>`;
         html += `<div style="font-size:11px; opacity:0.7;">`;
         html += `R - Weapon | M - Metal | N - New Billet<br>`;
         html += `F - Finish | Q - Quench | I - Inventory<br>`;
         html += `G - Grind (hold) | P - Polish (hold)<br>`;
+        html += `B - Shop | Tab - Achievements | E - Bellows<br>`;
         html += `WASD - Move | Space - Jump<br>`;
         html += `LMB/RMB - Hands | Release - Camera`;
         html += `</div>`;
