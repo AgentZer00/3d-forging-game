@@ -4,64 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Blacksmith's Forge - 3D Forging Simulator</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles-forgehands.css">
 </head>
 <body>
-    <!-- Modern Useful HUD -->
+    <!-- Minimal UI (ForgeHands) -->
     <div id="hud" style="display: none;">
-        <!-- Top Left - Core Stats -->
-        <div id="stats-panel">
-            <div class="stat-item">
-                <span class="stat-icon">🔥</span>
-                <div class="stat-bar">
-                    <div class="stat-fill" id="metalTempBar"></div>
-                </div>
-                <span class="stat-value" id="metalTempText">20°C</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-icon">⭐</span>
-                <div class="stat-bar quality-bar">
-                    <div class="stat-fill" id="qualityBar"></div>
-                </div>
-                <span class="stat-value" id="qualityText">0%</span>
-            </div>
+        <!-- Top Right - Money -->
+        <div id="money-display">
+            <span id="moneyText">$0</span>
         </div>
 
-        <!-- Top Right - Economy -->
-        <div id="economy-panel">
-            <div class="economy-stat">
-                <span class="eco-icon">💰</span>
-                <span class="eco-value" id="moneyText">$0</span>
-            </div>
-            <div class="economy-stat">
-                <span class="eco-icon">⭐</span>
-                <span class="eco-value" id="reputationText">Rep: 0</span>
-            </div>
-            <div class="economy-stat weapon-type">
-                <span class="eco-label">Crafting:</span>
-                <span class="eco-value" id="weaponTypeText">Sword</span>
-            </div>
+        <!-- Inventory (bottom left) -->
+        <div id="inventory-panel">
+            <div id="inventoryList"></div>
         </div>
-
-        <!-- Bottom Center - Contextual Actions -->
-        <div id="action-hints">
-            <div class="action-hint" id="actionHint"></div>
-        </div>
-
-        <!-- Held Items Display -->
-        <div id="held-items">
-            <div class="held-slot" id="rightHandSlot">
-                <span class="slot-label">Right Hand</span>
-                <span class="slot-item" id="rightHandItem">Empty</span>
-            </div>
-            <div class="held-slot" id="leftHandSlot">
-                <span class="slot-label">Left Hand</span>
-                <span class="slot-item" id="leftHandItem">Empty</span>
-            </div>
-        </div>
-
-        <!-- Customer Queue -->
-        <div id="customer-queue"></div>
     </div>
 
     <!-- Play Button -->
@@ -76,7 +32,7 @@
 
     <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="game.js"></script>
+    <script src="forgehands.js"></script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
             // Play button triggers pointer lock and starts game
