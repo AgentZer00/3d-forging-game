@@ -17,6 +17,13 @@ body {
     position: fixed;
     top: 0;
     left: 0;
+    z-index: 1;
+}
+
+#game-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
 }
 
 /* UI Overlay */
@@ -245,42 +252,66 @@ body {
     animation: fadeInOut 2s ease-in-out forwards;
 }
 
-/* Click to start prompt */
-.click-prompt {
+/* Play Button Overlay */
+.play-overlay {
     position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.85);
-    padding: 30px 50px;
-    border-radius: 15px;
-    border: 3px solid #ff6600;
-    text-align: center;
-    z-index: 150;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 200;
+}
+
+.play-button {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    background: linear-gradient(135deg, #ff6600 0%, #ff3300 100%);
+    border: none;
+    padding: 25px 50px;
+    border-radius: 60px;
     cursor: pointer;
-    animation: pulse 2s ease-in-out infinite;
-}
-
-.click-prompt:hover {
-    background: rgba(0, 0, 0, 0.95);
-    border-color: #ffaa00;
-    transform: translate(-50%, -50%) scale(1.05);
-}
-
-.click-prompt h2 {
-    color: #ffaa00;
-    font-size: 1.8rem;
-    margin-bottom: 10px;
-}
-
-.click-prompt p {
+    font-family: inherit;
+    font-size: 2rem;
+    font-weight: bold;
     color: #fff;
-    font-size: 1.1rem;
+    box-shadow: 0 10px 40px rgba(255, 102, 0, 0.5);
+    transition: all 0.3s ease;
+    animation: pulseButton 2s ease-in-out infinite;
 }
 
-@keyframes pulse {
-    0%, 100% { box-shadow: 0 0 20px rgba(255, 102, 0, 0.5); }
-    50% { box-shadow: 0 0 40px rgba(255, 102, 0, 0.8); }
+.play-button:hover {
+    transform: scale(1.1);
+    box-shadow: 0 15px 50px rgba(255, 102, 0, 0.8);
+    background: linear-gradient(135deg, #ff7700 0%, #ff4400 100%);
+}
+
+.play-button:active {
+    transform: scale(1.05);
+}
+
+.play-icon {
+    font-size: 2.5rem;
+    line-height: 1;
+}
+
+.play-text {
+    letter-spacing: 3px;
+}
+
+@keyframes pulseButton {
+    0%, 100% {
+        box-shadow: 0 10px 40px rgba(255, 102, 0, 0.5);
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 15px 60px rgba(255, 102, 0, 0.7);
+        transform: scale(1.02);
+    }
 }
 
 /* Responsive adjustments */
@@ -816,24 +847,6 @@ body.vr-mode #ui-overlay {
     color: #aaa;
 }
 
-/* Click Prompt Enhancement */
-.click-prompt {
-    pointer-events: auto;
-}
-
-.controls-hint {
-    margin-top: 20px;
-    padding-top: 20px;
-    border-top: 1px solid rgba(255, 102, 0, 0.3);
-    color: #ccc;
-    font-size: 0.9rem;
-    line-height: 1.8;
-}
-
-.controls-hint strong {
-    color: #ffaa00;
-    font-weight: bold;
-}
 
 /* Responsive */
 @media (max-width: 768px) {

@@ -64,14 +64,12 @@
         <div id="customer-queue"></div>
     </div>
 
-    <!-- Click Prompt -->
-    <div class="click-prompt" id="clickPrompt">
-        <h2>⚒️ Blacksmith's Forge ⚒️</h2>
-        <p>Click to Start Forging</p>
-        <div class="controls-hint">
-            <p><strong>WASD</strong> Move • <strong>F</strong> Pickup • <strong>Mouse</strong> Look & Swing</p>
-            <p><strong>E</strong> Heat • <strong>Q</strong> Quench • <strong>T</strong> Shop • <strong>1-6</strong> Weapons</p>
-        </div>
+    <!-- Play Button -->
+    <div class="play-overlay" id="playOverlay">
+        <button class="play-button" id="playButton">
+            <span class="play-icon">▶</span>
+            <span class="play-text">PLAY</span>
+        </button>
     </div>
 
     <div id="game-container"></div>
@@ -81,10 +79,12 @@
     <script src="game.js"></script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
-            // Click prompt triggers pointer lock
-            const clickPrompt = document.getElementById('clickPrompt');
-            if (clickPrompt) {
-                clickPrompt.addEventListener('click', function() {
+            // Play button triggers pointer lock and starts game
+            const playButton = document.getElementById('playButton');
+            const playOverlay = document.getElementById('playOverlay');
+
+            if (playButton && playOverlay) {
+                playButton.addEventListener('click', function() {
                     const canvas = document.querySelector('canvas');
                     if (canvas) {
                         canvas.requestPointerLock();
@@ -92,15 +92,16 @@
                 });
             }
 
-            // Hide click prompt and show HUD once pointer is locked
+            // Hide play overlay and show HUD once pointer is locked
             document.addEventListener('pointerlockchange', function() {
-                const prompt = document.getElementById('clickPrompt');
+                const overlay = document.getElementById('playOverlay');
                 const hud = document.getElementById('hud');
+
                 if (document.pointerLockElement) {
-                    if (prompt) prompt.style.display = 'none';
+                    if (overlay) overlay.style.display = 'none';
                     if (hud) hud.style.display = 'block';
                 } else {
-                    if (prompt) prompt.style.display = 'block';
+                    if (overlay) overlay.style.display = 'flex';
                     if (hud) hud.style.display = 'none';
                 }
             });
