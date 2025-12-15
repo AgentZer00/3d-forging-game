@@ -458,10 +458,10 @@ class ForgeHands {
 
         this.velocity.set(0, 0, 0);
 
-        if (this.keys.w) this.velocity.add(forward.multiplyScalar(speed));
-        if (this.keys.s) this.velocity.add(forward.multiplyScalar(-speed));
-        if (this.keys.a) this.velocity.add(right.multiplyScalar(-speed));
-        if (this.keys.d) this.velocity.add(right.multiplyScalar(speed));
+        if (this.keys.w) this.velocity.add(forward.clone().multiplyScalar(speed));
+        if (this.keys.s) this.velocity.add(forward.clone().multiplyScalar(-speed));
+        if (this.keys.a) this.velocity.add(right.clone().multiplyScalar(-speed));
+        if (this.keys.d) this.velocity.add(right.clone().multiplyScalar(speed));
 
         this.cameraPosition.add(this.velocity.clone().multiplyScalar(delta));
 
