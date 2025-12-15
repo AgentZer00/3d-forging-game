@@ -86,6 +86,7 @@ class ForgeHands {
 
         // Weapon selection
         this.selectedWeaponType = 'Dagger'; // Default to simplest weapon
+        this.selectedMetalType = 'iron'; // BUG FIX: Initialize metal type
 
         // Strike cooldown
         this.lastStrikeTime = 0;
@@ -95,6 +96,63 @@ class ForgeHands {
         this.isJumping = false;
         this.jumpVelocity = 0;
         this.isGrounded = true;
+
+        // Steam particles for quenching
+        this.activeSteam = [];
+
+        // Day/night cycle
+        this.timeOfDay = 0.5; // 0 = midnight, 0.5 = noon, 1 = midnight
+        this.daySpeed = 0.01; // How fast time passes
+
+        // Ambient sound timer
+        this.lastAmbientSound = 0;
+        this.ambientSoundInterval = 5; // seconds
+
+        // Shop system
+        this.shopOpen = false;
+        this.shopInventory = {
+            metals: [
+                { type: 'iron', price: 10, stock: 99 },
+                { type: 'steel', price: 25, stock: 20 },
+                { type: 'bronze', price: 15, stock: 30 },
+                { type: 'mithril', price: 100, stock: 5 },
+                { type: 'damascus', price: 150, stock: 3 }
+            ],
+            tools: [
+                { name: 'Steel Hammer', price: 200, owned: false },
+                { name: 'Master Hammer', price: 500, owned: false },
+                { name: 'Fine Tongs', price: 150, owned: false }
+            ]
+        };
+
+        // Achievement system
+        this.achievements = {
+            firstWeapon: { name: 'First Forge', desc: 'Forge your first weapon', unlocked: false },
+            tenWeapons: { name: 'Apprentice Smith', desc: 'Forge 10 weapons', unlocked: false },
+            fiftyWeapons: { name: 'Journeyman', desc: 'Forge 50 weapons', unlocked: false },
+            hundredWeapons: { name: 'Master Blacksmith', desc: 'Forge 100 weapons', unlocked: false },
+            firstRare: { name: 'Quality Crafts', desc: 'Forge a Rare weapon', unlocked: false },
+            firstSuperior: { name: 'Superior Work', desc: 'Forge a Superior weapon', unlocked: false },
+            firstMasterwork: { name: 'Masterwork', desc: 'Forge a Masterwork weapon', unlocked: false },
+            legendary: { name: 'Legendary Smith', desc: 'Forge a Legendary weapon', unlocked: false },
+            richSmith: { name: 'Prosperous', desc: 'Earn 1000 gold', unlocked: false },
+            wealthySmith: { name: 'Wealthy', desc: 'Earn 10000 gold', unlocked: false },
+            allMetals: { name: 'Metallurgist', desc: 'Work with all metal types', unlocked: false },
+            perfectHeat: { name: 'Heat Master', desc: 'Strike 100 times at perfect heat', unlocked: false }
+        };
+        this.totalWeaponsForged = 0;
+        this.totalMoneyEarned = 0;
+        this.perfectHeatStrikes = 0;
+        this.metalsWorked = new Set();
+
+        // Forge bellows
+        this.bellows = null;
+        this.bellowsActive = false;
+        this.forgeHeatBoost = 0;
+
+        // Weapon display rack
+        this.displayedWeapons = [];
+        this.weaponRack = null
 
         // Event listener references for cleanup
         this.eventListeners = {
@@ -141,10 +199,168 @@ class ForgeHands {
         this.createWorld();
         this.createHands();
         this.createTools();
+        this.createWorkshopFeatures(); // NEW: Additional workshop elements
         this.setupEventListeners();
         this.initAudio();
         this.loadGameState();
         this.animate();
+    }
+
+    createWorkshopFeatures() {
+        // Create forge bellows
+        this.createBellows();
+
+        // Create weapon display rack
+        this.createWeaponRack();
+
+        // Create workbench
+        this.createWorkbench();
+
+        // Add water to quench tub
+        this.addWaterToTub();
+
+        // Create coal pile near forge
+        this.createCoalPile();
+    }
+
+    createBellows() {
+        const bellowsGroup = new THREE.Group();
+
+        // Bellows body
+        const body = new THREE.Mesh(
+            new THREE.BoxGeometry(0.4, 0.3, 0.5),
+            new THREE.MeshStandardMaterial({ color: 0x5a3a20, roughness: 0.8 })
+        );
+        bellowsGroup.add(body);
+
+        // Nozzle
+        const nozzle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.03, 0.05, 0.3, 8),
+            new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.8 })
+        );
+        nozzle.rotation.z = Math.PI / 2;
+        nozzle.position.set(0.35, 0, 0);
+        bellowsGroup.add(nozzle);
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8),
+            new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.7 })
+        );
+        handle.position.set(-0.1, 0.25, 0);
+        bellowsGroup.add(handle);
+
+        bellowsGroup.position.set(-3.5, 0.5, 0.8);
+        bellowsGroup.userData.type = 'bellows';
+        bellowsGroup.userData.grabbable = true;
+
+        this.scene.add(bellowsGroup);
+        this.bellows = bellowsGroup;
+    }
+
+    createWeaponRack() {
+        const rackGroup = new THREE.Group();
+
+        // Back board
+        const backBoard = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 1.2, 0.05),
+            new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.8 })
+        );
+        backBoard.position.y = 0.6;
+        rackGroup.add(backBoard);
+
+        // Horizontal bars for holding weapons
+        for (let i = 0; i < 3; i++) {
+            const bar = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.02, 0.02, 1.4, 8),
+                new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.6 })
+            );
+            bar.rotation.z = Math.PI / 2;
+            bar.position.set(0, 0.3 + i * 0.35, 0.08);
+            rackGroup.add(bar);
+        }
+
+        rackGroup.position.set(4, 0, -3);
+        rackGroup.rotation.y = -Math.PI / 4;
+        this.scene.add(rackGroup);
+        this.weaponRack = rackGroup;
+    }
+
+    createWorkbench() {
+        const benchGroup = new THREE.Group();
+
+        // Table top
+        const top = new THREE.Mesh(
+            new THREE.BoxGeometry(1.5, 0.1, 0.8),
+            new THREE.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.7 })
+        );
+        top.position.y = 0.85;
+        top.castShadow = true;
+        top.receiveShadow = true;
+        benchGroup.add(top);
+
+        // Legs
+        for (let x = -0.6; x <= 0.6; x += 1.2) {
+            for (let z = -0.3; z <= 0.3; z += 0.6) {
+                const leg = new THREE.Mesh(
+                    new THREE.BoxGeometry(0.1, 0.8, 0.1),
+                    new THREE.MeshStandardMaterial({ color: 0x4a3020, roughness: 0.8 })
+                );
+                leg.position.set(x, 0.4, z);
+                leg.castShadow = true;
+                benchGroup.add(leg);
+            }
+        }
+
+        benchGroup.position.set(3, 0, 2);
+        this.scene.add(benchGroup);
+    }
+
+    addWaterToTub() {
+        // Add water surface to quench tub
+        const water = new THREE.Mesh(
+            new THREE.CircleGeometry(0.35, 16),
+            new THREE.MeshStandardMaterial({
+                color: 0x2a5a7a,
+                roughness: 0.1,
+                metalness: 0.3,
+                transparent: true,
+                opacity: 0.8
+            })
+        );
+        water.rotation.x = -Math.PI / 2;
+        water.position.set(2, 0.45, 0);
+        this.scene.add(water);
+        this.waterSurface = water;
+    }
+
+    createCoalPile() {
+        // Coal pile near forge
+        const coalGroup = new THREE.Group();
+
+        for (let i = 0; i < 15; i++) {
+            const coal = new THREE.Mesh(
+                new THREE.DodecahedronGeometry(0.05 + Math.random() * 0.05),
+                new THREE.MeshStandardMaterial({
+                    color: 0x1a1a1a,
+                    roughness: 0.9
+                })
+            );
+            coal.position.set(
+                (Math.random() - 0.5) * 0.4,
+                Math.random() * 0.15,
+                (Math.random() - 0.5) * 0.4
+            );
+            coal.rotation.set(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI,
+                Math.random() * Math.PI
+            );
+            coalGroup.add(coal);
+        }
+
+        coalGroup.position.set(-3.8, 0, -0.5);
+        this.scene.add(coalGroup);
     }
 
     initAudio() {
@@ -686,12 +902,23 @@ class ForgeHands {
     }
 
     createBillet(metalType = 'iron') {
+        // Metal-specific base colors
+        const metalColors = {
+            iron: 0x8a8a8a,      // Gray
+            steel: 0xa0a5aa,     // Blue-gray
+            bronze: 0xcd7f32,    // Bronze/copper
+            mithril: 0xc0d8e8,   // Silvery blue
+            damascus: 0x6a6a7a   // Dark steel with pattern
+        };
+
+        const baseColor = metalColors[metalType] || 0x8a8a8a;
+
         const billet = new THREE.Mesh(
             new THREE.BoxGeometry(0.15, 0.05, 0.3),
             new THREE.MeshStandardMaterial({
-                color: 0x8a8a8a,
+                color: baseColor,
                 metalness: 0.9,
-                roughness: 0.3
+                roughness: metalType === 'mithril' ? 0.15 : 0.3
             })
         );
         billet.position.set(-2.5, 1.2, 0);
@@ -790,11 +1017,28 @@ class ForgeHands {
             if (e.key.toLowerCase() === 'm' && this.pointerLocked) {
                 this.cycleMetalType();
             }
+            // Shop system
+            if (e.key.toLowerCase() === 'b' && this.pointerLocked) {
+                this.toggleShop();
+            }
+            // Achievements
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                this.showAchievementList();
+            }
+            // Bellows - hold E to pump
+            if (e.key.toLowerCase() === 'e' && this.pointerLocked) {
+                this.bellowsActive = true;
+            }
         };
         window.addEventListener('keydown', this.eventListeners.keydown);
 
         this.eventListeners.keyup = (e) => {
             this.keys[e.key.toLowerCase()] = false;
+            // Stop bellows when E released
+            if (e.key.toLowerCase() === 'e') {
+                this.bellowsActive = false;
+            }
         };
         window.addEventListener('keyup', this.eventListeners.keyup);
 
@@ -874,13 +1118,400 @@ class ForgeHands {
         this.updateHeatSystem(delta);
         this.updateFatigue(delta);
         this.updateSparks(delta);
+        this.updateSteam(delta);       // NEW: Steam particle system
         this.updateForgeEffects();
+        this.updateDayNightCycle(delta); // NEW: Day/night lighting
+        this.updateAmbientSounds(delta); // NEW: Ambient forge sounds
+        this.updateBellows(delta);       // NEW: Bellows heat boost
         this.checkAnvilSnap();
         this.updateGrinding(delta);
         this.updatePolishing(delta);
         this.updateHUD();
 
         this.renderer.render(this.scene, this.camera);
+    }
+
+    // ========== NEW SYSTEMS ==========
+
+    updateSteam(delta) {
+        // Update and remove old steam particles
+        for (let i = this.activeSteam.length - 1; i >= 0; i--) {
+            const steam = this.activeSteam[i];
+            steam.userData.age += delta;
+
+            // Steam rises and fades
+            steam.position.y += delta * 0.5;
+            steam.position.x += (Math.random() - 0.5) * delta * 0.2;
+            steam.position.z += (Math.random() - 0.5) * delta * 0.2;
+            steam.material.opacity = Math.max(0, 1 - steam.userData.age / steam.userData.lifetime);
+            steam.scale.multiplyScalar(1 + delta * 0.5);
+
+            if (steam.userData.age >= steam.userData.lifetime) {
+                this.scene.remove(steam);
+                steam.geometry.dispose();
+                steam.material.dispose();
+                this.activeSteam.splice(i, 1);
+            }
+        }
+    }
+
+    createSteamParticles(position, intensity) {
+        // Limit max active steam particles
+        if (this.activeSteam.length > 50) return;
+
+        for (let i = 0; i < 10 * intensity; i++) {
+            const steam = new THREE.Mesh(
+                new THREE.SphereGeometry(0.03 + Math.random() * 0.02),
+                new THREE.MeshBasicMaterial({
+                    color: 0xcccccc,
+                    transparent: true,
+                    opacity: 0.6
+                })
+            );
+            steam.position.copy(position);
+            steam.position.x += (Math.random() - 0.5) * 0.2;
+            steam.position.z += (Math.random() - 0.5) * 0.2;
+            steam.userData.lifetime = 1.5 + Math.random();
+            steam.userData.age = 0;
+            this.scene.add(steam);
+            this.activeSteam.push(steam);
+        }
+    }
+
+    updateDayNightCycle(delta) {
+        // Advance time (very slow for gameplay)
+        this.timeOfDay += delta * this.daySpeed * 0.01;
+        if (this.timeOfDay >= 1) this.timeOfDay = 0;
+
+        // Calculate sun position and light intensity
+        const sunAngle = this.timeOfDay * Math.PI * 2;
+        const sunIntensity = Math.max(0, Math.sin(sunAngle));
+
+        // Update ambient light based on time
+        const ambientIntensity = 0.1 + sunIntensity * 0.3;
+        if (this.scene.children[0] && this.scene.children[0].isAmbientLight) {
+            this.scene.children[0].intensity = ambientIntensity;
+        }
+
+        // Update sky color
+        const nightColor = new THREE.Color(0x0a0a15);
+        const dayColor = new THREE.Color(0x1a1410);
+        const currentColor = nightColor.clone().lerp(dayColor, sunIntensity);
+        this.scene.background = currentColor;
+        if (this.scene.fog) {
+            this.scene.fog.color = currentColor;
+        }
+    }
+
+    updateAmbientSounds(delta) {
+        this.lastAmbientSound += delta;
+
+        // Play ambient forge sounds periodically
+        if (this.lastAmbientSound > this.ambientSoundInterval) {
+            this.lastAmbientSound = 0;
+            this.ambientSoundInterval = 3 + Math.random() * 4;
+
+            // Random ambient sound
+            if (Math.random() < 0.3) {
+                this.playForgeAmbience();
+            }
+        }
+    }
+
+    updateBellows(delta) {
+        // Decay bellows heat boost
+        if (this.forgeHeatBoost > 0) {
+            this.forgeHeatBoost = Math.max(0, this.forgeHeatBoost - delta * 0.1);
+        }
+
+        // Check if bellows is being used
+        if (this.bellowsActive && this.bellows) {
+            this.forgeHeatBoost = Math.min(1.0, this.forgeHeatBoost + delta * 0.5);
+
+            // Visual feedback - bellows compress
+            this.bellows.scale.y = 0.7 + Math.sin(Date.now() * 0.01) * 0.1;
+
+            // Play bellows sound occasionally
+            if (Math.random() < 0.05) {
+                this.playForgeAmbience();
+            }
+        } else if (this.bellows) {
+            // Return to normal size
+            this.bellows.scale.y = THREE.MathUtils.lerp(this.bellows.scale.y, 1.0, delta * 5);
+        }
+    }
+
+    // ========== SHOP SYSTEM ==========
+
+    toggleShop() {
+        const existing = document.getElementById('shop-ui');
+        if (existing) {
+            existing.remove();
+            this.shopOpen = false;
+            return;
+        }
+
+        this.shopOpen = true;
+        const ui = document.createElement('div');
+        ui.id = 'shop-ui';
+        ui.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20,15,10,0.95);
+            color: #ffaa44;
+            padding: 25px;
+            border-radius: 10px;
+            border: 2px solid #5a4a3a;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+        `;
+
+        let html = `<h2 style="margin-top:0; color:#ffcc66;">BLACKSMITH SUPPLIES</h2>`;
+        html += `<p>Your Gold: <span style="color:#ffdd00;">$${this.money}</span></p>`;
+        html += `<hr style="border-color:#5a4a3a;">`;
+
+        // Metals section
+        html += `<h3 style="color:#aaa;">Metal Billets</h3>`;
+        this.shopInventory.metals.forEach((item, i) => {
+            const canAfford = this.money >= item.price;
+            const color = canAfford ? '#66ff66' : '#ff6666';
+            html += `<div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px;">`;
+            html += `<strong>${item.type.charAt(0).toUpperCase() + item.type.slice(1)}</strong> - $${item.price} `;
+            html += `<span style="color:#888;">(Stock: ${item.stock})</span>`;
+            if (item.stock > 0) {
+                html += ` <button onclick="window.game.buyMetal(${i})" style="margin-left:10px; padding:3px 10px; cursor:pointer; background:${color}; border:none; border-radius:3px;">Buy</button>`;
+            }
+            html += `</div>`;
+        });
+
+        html += `<hr style="border-color:#5a4a3a;">`;
+        html += `<h3 style="color:#aaa;">Tools</h3>`;
+        this.shopInventory.tools.forEach((item, i) => {
+            const canAfford = this.money >= item.price;
+            const color = canAfford ? '#66ff66' : '#ff6666';
+            html += `<div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px;">`;
+            html += `<strong>${item.name}</strong> - $${item.price}`;
+            if (item.owned) {
+                html += ` <span style="color:#66ff66;">OWNED</span>`;
+            } else {
+                html += ` <button onclick="window.game.buyTool(${i})" style="margin-left:10px; padding:3px 10px; cursor:pointer; background:${color}; border:none; border-radius:3px;">Buy</button>`;
+            }
+            html += `</div>`;
+        });
+
+        html += `<br><button onclick="document.getElementById('shop-ui').remove()" style="padding:10px 20px; cursor:pointer; background:#5a4a3a; color:#ffaa44; border:none; border-radius:5px;">Close Shop (B)</button>`;
+
+        ui.innerHTML = html;
+        document.body.appendChild(ui);
+    }
+
+    buyMetal(index) {
+        const item = this.shopInventory.metals[index];
+        if (!item || item.stock <= 0 || this.money < item.price) {
+            this.playErrorSound();
+            return;
+        }
+
+        this.money -= item.price;
+        item.stock--;
+        this.availableBillets.push(item.type);
+        this.playSuccessSound();
+        this.showFeedback(`Bought ${item.type} billet`);
+
+        // Refresh shop UI
+        this.toggleShop();
+        this.toggleShop();
+        this.saveGameState();
+    }
+
+    buyTool(index) {
+        const item = this.shopInventory.tools[index];
+        if (!item || item.owned || this.money < item.price) {
+            this.playErrorSound();
+            return;
+        }
+
+        this.money -= item.price;
+        item.owned = true;
+        this.playSuccessSound();
+        this.showFeedback(`Bought ${item.name}!`);
+
+        // Refresh shop UI
+        this.toggleShop();
+        this.toggleShop();
+        this.saveGameState();
+    }
+
+    // ========== ACHIEVEMENT SYSTEM ==========
+
+    checkAchievements() {
+        let newAchievement = null;
+
+        // Weapon count achievements
+        if (this.totalWeaponsForged >= 1 && !this.achievements.firstWeapon.unlocked) {
+            this.achievements.firstWeapon.unlocked = true;
+            newAchievement = this.achievements.firstWeapon;
+        }
+        if (this.totalWeaponsForged >= 10 && !this.achievements.tenWeapons.unlocked) {
+            this.achievements.tenWeapons.unlocked = true;
+            newAchievement = this.achievements.tenWeapons;
+        }
+        if (this.totalWeaponsForged >= 50 && !this.achievements.fiftyWeapons.unlocked) {
+            this.achievements.fiftyWeapons.unlocked = true;
+            newAchievement = this.achievements.fiftyWeapons;
+        }
+        if (this.totalWeaponsForged >= 100 && !this.achievements.hundredWeapons.unlocked) {
+            this.achievements.hundredWeapons.unlocked = true;
+            newAchievement = this.achievements.hundredWeapons;
+        }
+
+        // Money achievements
+        if (this.totalMoneyEarned >= 1000 && !this.achievements.richSmith.unlocked) {
+            this.achievements.richSmith.unlocked = true;
+            newAchievement = this.achievements.richSmith;
+        }
+        if (this.totalMoneyEarned >= 10000 && !this.achievements.wealthySmith.unlocked) {
+            this.achievements.wealthySmith.unlocked = true;
+            newAchievement = this.achievements.wealthySmith;
+        }
+
+        // Heat mastery
+        if (this.perfectHeatStrikes >= 100 && !this.achievements.perfectHeat.unlocked) {
+            this.achievements.perfectHeat.unlocked = true;
+            newAchievement = this.achievements.perfectHeat;
+        }
+
+        // All metals
+        if (this.metalsWorked.size >= 5 && !this.achievements.allMetals.unlocked) {
+            this.achievements.allMetals.unlocked = true;
+            newAchievement = this.achievements.allMetals;
+        }
+
+        if (newAchievement) {
+            this.showAchievement(newAchievement);
+        }
+    }
+
+    showAchievement(achievement) {
+        this.playSuccessSound();
+
+        const popup = document.createElement('div');
+        popup.style.cssText = `
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #4a3a20, #2a2010);
+            color: #ffcc44;
+            padding: 20px 40px;
+            border-radius: 10px;
+            border: 2px solid #ffaa44;
+            font-family: monospace;
+            text-align: center;
+            z-index: 2000;
+            animation: achievementPop 0.5s ease-out;
+        `;
+        popup.innerHTML = `
+            <div style="font-size:12px; color:#aaa;">ACHIEVEMENT UNLOCKED</div>
+            <div style="font-size:18px; margin:5px 0; color:#ffdd66;">${achievement.name}</div>
+            <div style="font-size:12px; color:#888;">${achievement.desc}</div>
+        `;
+
+        // Add animation style
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes achievementPop {
+                0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+                50% { transform: translateX(-50%) scale(1.1); }
+                100% { transform: translateX(-50%) scale(1); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+
+        document.body.appendChild(popup);
+        setTimeout(() => popup.remove(), 4000);
+    }
+
+    showAchievementList() {
+        const existing = document.getElementById('achievement-ui');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        const ui = document.createElement('div');
+        ui.id = 'achievement-ui';
+        ui.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(20,15,10,0.95);
+            color: #ffaa44;
+            padding: 25px;
+            border-radius: 10px;
+            border: 2px solid #5a4a3a;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+        `;
+
+        let html = `<h2 style="margin-top:0; color:#ffcc66;">ACHIEVEMENTS</h2>`;
+
+        let unlockedCount = 0;
+        Object.values(this.achievements).forEach(a => {
+            if (a.unlocked) unlockedCount++;
+        });
+        html += `<p>Unlocked: ${unlockedCount}/${Object.keys(this.achievements).length}</p>`;
+        html += `<hr style="border-color:#5a4a3a;">`;
+
+        Object.values(this.achievements).forEach(a => {
+            const color = a.unlocked ? '#66ff66' : '#666';
+            const icon = a.unlocked ? '★' : '☆';
+            html += `<div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 5px; color:${color};">`;
+            html += `<span style="font-size:16px;">${icon}</span> <strong>${a.name}</strong><br>`;
+            html += `<span style="font-size:11px; color:#888;">${a.desc}</span>`;
+            html += `</div>`;
+        });
+
+        html += `<br><button onclick="document.getElementById('achievement-ui').remove()" style="padding:10px 20px; cursor:pointer; background:#5a4a3a; color:#ffaa44; border:none; border-radius:5px;">Close</button>`;
+
+        ui.innerHTML = html;
+        document.body.appendChild(ui);
+    }
+
+    checkWeaponAchievements(rarity) {
+        // Rarity-based achievements
+        const rarityIndex = this.rarities.indexOf(rarity);
+
+        if (rarityIndex >= 3 && !this.achievements.firstRare.unlocked) {
+            this.achievements.firstRare.unlocked = true;
+            this.showAchievement(this.achievements.firstRare);
+        }
+        if (rarityIndex >= 4 && !this.achievements.firstSuperior.unlocked) {
+            this.achievements.firstSuperior.unlocked = true;
+            this.showAchievement(this.achievements.firstSuperior);
+        }
+        if (rarityIndex >= 5 && !this.achievements.firstMasterwork.unlocked) {
+            this.achievements.firstMasterwork.unlocked = true;
+            this.showAchievement(this.achievements.firstMasterwork);
+        }
+        if (rarityIndex >= 6 && !this.achievements.legendary.unlocked) {
+            this.achievements.legendary.unlocked = true;
+            this.showAchievement(this.achievements.legendary);
+        }
+
+        // Also check general achievements
+        this.checkAchievements();
     }
 
     updateFatigue(delta) {
@@ -1238,12 +1869,23 @@ class ForgeHands {
         this.advanceTraining('hammerControl', effectiveness * 0.1);
         if (heat >= 0.6 && heat <= 0.75) {
             this.advanceTraining('heatReading', 0.01);
+            // Track perfect heat strikes for achievement
+            this.perfectHeatStrikes = (this.perfectHeatStrikes || 0) + 1;
         }
 
         // Material knowledge advancement when working with rare metals
         const metalType = this.currentBillet.userData.metalType;
         if (metalType !== 'iron' && metalType !== 'bronze') {
             this.advanceTraining('materialKnowledge', 0.005);
+        }
+
+        // Track metals worked for achievement
+        if (!this.metalsWorked) this.metalsWorked = new Set();
+        this.metalsWorked.add(metalType);
+
+        // Check achievements periodically
+        if (this.strikeCount % 10 === 0) {
+            this.checkAchievements();
         }
 
         this.lastStrikeTime = currentTime;
@@ -1323,7 +1965,9 @@ class ForgeHands {
 
         // Heat INCREASES when in forge (within 1.5 units of forge center and forge is open)
         if (this.forgeOpen && distToForge < 1.5 && !this.billetAnvilLocked) {
-            const heatRate = 0.15; // 15% per second
+            const baseHeatRate = 0.15; // 15% per second
+            const bellowsBoost = this.forgeHeatBoost || 1.0; // Bellows can boost up to 2x
+            const heatRate = baseHeatRate * bellowsBoost;
             data.heat = Math.min(1.0, data.heat + heatRate * delta);
         }
 
@@ -1458,6 +2102,15 @@ class ForgeHands {
                 this.training = data.trainingLevels || this.training;
                 this.grindingUnlocked = data.unlocks?.grindingUnlocked || false;
                 this.polishingUnlocked = data.unlocks?.polishingUnlocked || false;
+                this.rareWeaponsForged = data.rareWeaponsForged || 0;
+                // Restore achievement tracking
+                this.totalWeaponsForged = data.totalWeaponsForged || 0;
+                this.totalMoneyEarned = data.totalMoneyEarned || 0;
+                this.perfectHeatStrikes = data.perfectHeatStrikes || 0;
+                this.metalsWorked = new Set(data.metalsWorked || []);
+                if (data.achievements) {
+                    Object.assign(this.achievements, data.achievements);
+                }
             }
         } catch (err) {
             console.log('No backend available, using local state');
@@ -1473,7 +2126,13 @@ class ForgeHands {
                 grindingUnlocked: this.grindingUnlocked,
                 polishingUnlocked: this.polishingUnlocked
             },
-            rareWeaponsForged: this.rareWeaponsForged
+            rareWeaponsForged: this.rareWeaponsForged,
+            // Achievement tracking
+            totalWeaponsForged: this.totalWeaponsForged,
+            totalMoneyEarned: this.totalMoneyEarned,
+            perfectHeatStrikes: this.perfectHeatStrikes,
+            metalsWorked: Array.from(this.metalsWorked || []),
+            achievements: this.achievements
         };
 
         try {
@@ -1551,6 +2210,10 @@ class ForgeHands {
 
         // Add to inventory
         this.inventory.push(weapon);
+
+        // Track total weapons forged and check achievements
+        this.totalWeaponsForged = (this.totalWeaponsForged || 0) + 1;
+        this.checkWeaponAchievements(rarity);
 
         // Training advancement
         this.advanceTraining('precisionForging', quality * 0.01);
@@ -1646,6 +2309,11 @@ class ForgeHands {
 
         // Play quench sound
         this.playQuenchSound();
+
+        // Create steam particles based on heat intensity
+        if (heatBefore > 0.3) {
+            this.createSteamParticles(this.quenchTub.position.clone().setY(1.0), heatBefore);
+        }
 
         // Quenching rapidly cools the billet
         data.heat = Math.max(0, data.heat - 0.5);
@@ -1907,7 +2575,11 @@ class ForgeHands {
 
         const weapon = this.inventory[index];
         this.money += weapon.value;
+        this.totalMoneyEarned = (this.totalMoneyEarned || 0) + weapon.value;
         this.inventory.splice(index, 1);
+
+        // Check money achievements
+        this.checkAchievements();
 
         this.saveGameState();
         this.showFeedback(`Sold ${weapon.rarity} ${weapon.type} for $${weapon.value}`);
@@ -1958,11 +2630,17 @@ class ForgeHands {
             html += `<div style="color:#666; font-size:10px;">Rare weapons forged: ${this.rareWeaponsForged}/5</div>`;
         }
 
+        // Show bellows status when active
+        if (this.bellowsActive && this.forgeHeatBoost > 1.0) {
+            html += `<div style="color:#ff8844">BELLOWS ACTIVE (${((this.forgeHeatBoost - 1) * 100).toFixed(0)}% boost)</div>`;
+        }
+
         html += `<br>`;
         html += `<div style="font-size:11px; opacity:0.7;">`;
         html += `R - Weapon | M - Metal | N - New Billet<br>`;
         html += `F - Finish | Q - Quench | I - Inventory<br>`;
         html += `G - Grind (hold) | P - Polish (hold)<br>`;
+        html += `B - Shop | Tab - Achievements | E - Bellows<br>`;
         html += `WASD - Move | Space - Jump<br>`;
         html += `LMB/RMB - Hands | Release - Camera`;
         html += `</div>`;
