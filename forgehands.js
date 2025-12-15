@@ -81,6 +81,33 @@ class ForgeHands {
         // Pointer lock
         this.pointerLocked = false;
 
+        // Active sparks tracking
+        this.activeSparks = [];
+
+        // Weapon selection
+        this.selectedWeaponType = 'Dagger'; // Default to simplest weapon
+
+        // Strike cooldown
+        this.lastStrikeTime = 0;
+        this.strikeCooldown = 0.3; // 300ms between strikes
+
+        // Jump
+        this.isJumping = false;
+        this.jumpVelocity = 0;
+        this.isGrounded = true;
+
+        // Event listener references for cleanup
+        this.eventListeners = {
+            mousedown: null,
+            mouseup: null,
+            mousemove: null,
+            contextmenu: null,
+            keydown: null,
+            keyup: null,
+            pointerlockchange: null,
+            resize: null
+        };
+
         this.init();
     }
 
@@ -303,6 +330,7 @@ class ForgeHands {
         hammer.position.set(-1, 0.9, 1);
         this.scene.add(hammer);
         this.hammers.push(hammer);
+        this.physicsObjects.push(hammer);
     }
 
     createHammer(stats) {
@@ -357,21 +385,23 @@ class ForgeHands {
 
         this.scene.add(billet);
         this.currentBillet = billet;
+        this.physicsObjects.push(billet);
         return billet;
     }
 
     setupEventListeners() {
         // Mouse controls
-        window.addEventListener('mousedown', (e) => {
+        this.eventListeners.mousedown = (e) => {
             if (!this.pointerLocked) return;
 
             if (e.button === 0) this.leftMouseDown = true;
             if (e.button === 2) this.rightMouseDown = true;
 
             e.preventDefault();
-        });
+        };
+        window.addEventListener('mousedown', this.eventListeners.mousedown);
 
-        window.addEventListener('mouseup', (e) => {
+        this.eventListeners.mouseup = (e) => {
             if (e.button === 0) {
                 this.leftMouseDown = false;
                 this.releaseGrab('left');
@@ -380,9 +410,10 @@ class ForgeHands {
                 this.rightMouseDown = false;
                 this.releaseGrab('right');
             }
-        });
+        };
+        window.addEventListener('mouseup', this.eventListeners.mouseup);
 
-        window.addEventListener('mousemove', (e) => {
+        this.eventListeners.mousemove = (e) => {
             if (!this.pointerLocked) return;
 
             // Camera rotation
@@ -404,30 +435,100 @@ class ForgeHands {
                     this.rightHandTarget.y -= e.movementY * moveScale;
                 }
             }
-        });
+        };
+        window.addEventListener('mousemove', this.eventListeners.mousemove);
 
-        window.addEventListener('contextmenu', (e) => e.preventDefault());
+        this.eventListeners.contextmenu = (e) => e.preventDefault();
+        window.addEventListener('contextmenu', this.eventListeners.contextmenu);
 
         // Keyboard
-        window.addEventListener('keydown', (e) => {
+        this.eventListeners.keydown = (e) => {
             this.keys[e.key.toLowerCase()] = true;
-        });
 
-        window.addEventListener('keyup', (e) => {
+            // Weapon control keys
+            if (e.key.toLowerCase() === 'f' && this.pointerLocked) {
+                this.finishWeapon();
+            }
+            if (e.key.toLowerCase() === 'q' && this.pointerLocked) {
+                this.quenchBillet();
+            }
+            if (e.key.toLowerCase() === 'i' && this.pointerLocked) {
+                this.toggleInventory();
+            }
+            if (e.key.toLowerCase() === 'r' && this.pointerLocked) {
+                this.cycleWeaponType();
+            }
+        };
+        window.addEventListener('keydown', this.eventListeners.keydown);
+
+        this.eventListeners.keyup = (e) => {
             this.keys[e.key.toLowerCase()] = false;
-        });
+        };
+        window.addEventListener('keyup', this.eventListeners.keyup);
 
         // Pointer lock
-        document.addEventListener('pointerlockchange', () => {
+        this.eventListeners.pointerlockchange = () => {
             this.pointerLocked = document.pointerLockElement === this.renderer.domElement;
-        });
+        };
+        document.addEventListener('pointerlockchange', this.eventListeners.pointerlockchange);
 
         // Window resize
-        window.addEventListener('resize', () => {
+        this.eventListeners.resize = () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+        window.addEventListener('resize', this.eventListeners.resize);
+
+        // Click to lock pointer
+        this.eventListeners.click = () => {
+            if (!this.pointerLocked) {
+                this.renderer.domElement.requestPointerLock();
+            }
+        };
+        this.renderer.domElement.addEventListener('click', this.eventListeners.click);
+    }
+
+    destroy() {
+        // Clean up event listeners
+        if (this.eventListeners.mousedown) {
+            window.removeEventListener('mousedown', this.eventListeners.mousedown);
+        }
+        if (this.eventListeners.mouseup) {
+            window.removeEventListener('mouseup', this.eventListeners.mouseup);
+        }
+        if (this.eventListeners.mousemove) {
+            window.removeEventListener('mousemove', this.eventListeners.mousemove);
+        }
+        if (this.eventListeners.contextmenu) {
+            window.removeEventListener('contextmenu', this.eventListeners.contextmenu);
+        }
+        if (this.eventListeners.keydown) {
+            window.removeEventListener('keydown', this.eventListeners.keydown);
+        }
+        if (this.eventListeners.keyup) {
+            window.removeEventListener('keyup', this.eventListeners.keyup);
+        }
+        if (this.eventListeners.pointerlockchange) {
+            document.removeEventListener('pointerlockchange', this.eventListeners.pointerlockchange);
+        }
+        if (this.eventListeners.resize) {
+            window.removeEventListener('resize', this.eventListeners.resize);
+        }
+        if (this.eventListeners.click) {
+            this.renderer.domElement.removeEventListener('click', this.eventListeners.click);
+        }
+
+        // Clean up Three.js resources
+        this.renderer.dispose();
+
+        // Clean up sparks
+        this.activeSparks.forEach(spark => {
+            this.scene.remove(spark);
+            spark.geometry.dispose();
+            spark.material.dispose();
         });
+        this.activeSparks = [];
     }
 
     animate() {
@@ -439,10 +540,25 @@ class ForgeHands {
         this.updateHands(delta);
         this.updatePhysics(delta);
         this.updateHeatSystem(delta);
+        this.updateFatigue(delta);
+        this.updateSparks(delta);
         this.updateForgeEffects();
         this.checkAnvilSnap();
+        this.updateHUD();
 
         this.renderer.render(this.scene, this.camera);
+    }
+
+    updateFatigue(delta) {
+        // Fatigue recovers when: Standing still, Resting hands, Not striking
+        const isMoving = this.velocity.length() > 0.01;
+        const isUsingHands = this.leftMouseDown || this.rightMouseDown;
+
+        if (!isMoving && !isUsingHands) {
+            // Recover fatigue when resting
+            const recoveryRate = 0.05; // 5% per second
+            this.fatigue = Math.max(0, this.fatigue - recoveryRate * delta);
+        }
     }
 
     updateMovement(delta) {
@@ -458,10 +574,31 @@ class ForgeHands {
 
         this.velocity.set(0, 0, 0);
 
-        if (this.keys.w) this.velocity.add(forward.multiplyScalar(speed));
-        if (this.keys.s) this.velocity.add(forward.multiplyScalar(-speed));
-        if (this.keys.a) this.velocity.add(right.multiplyScalar(-speed));
-        if (this.keys.d) this.velocity.add(right.multiplyScalar(speed));
+        if (this.keys.w) this.velocity.add(forward.clone().multiplyScalar(speed));
+        if (this.keys.s) this.velocity.add(forward.clone().multiplyScalar(-speed));
+        if (this.keys.a) this.velocity.add(right.clone().multiplyScalar(-speed));
+        if (this.keys.d) this.velocity.add(right.clone().multiplyScalar(speed));
+
+        // Jump mechanics
+        const groundLevel = 1.7; // Eye height
+        this.isGrounded = this.cameraPosition.y <= groundLevel;
+
+        if (this.keys[' '] && this.isGrounded && !this.isJumping) {
+            this.jumpVelocity = 5.0; // Jump strength
+            this.isJumping = true;
+        }
+
+        // Apply jump physics
+        if (this.isJumping || !this.isGrounded) {
+            this.jumpVelocity += this.gravity * delta;
+            this.cameraPosition.y += this.jumpVelocity * delta;
+
+            if (this.cameraPosition.y <= groundLevel) {
+                this.cameraPosition.y = groundLevel;
+                this.jumpVelocity = 0;
+                this.isJumping = false;
+            }
+        }
 
         this.cameraPosition.add(this.velocity.clone().multiplyScalar(delta));
 
@@ -477,12 +614,12 @@ class ForgeHands {
         const baseRight = this.camera.position.clone().add(new THREE.Vector3(0.3, -0.3, -0.5));
 
         this.leftHand.position.lerp(
-            baseLeft.add(this.leftHandTarget),
+            baseLeft.clone().add(this.leftHandTarget),
             lerpFactor
         );
 
         this.rightHand.position.lerp(
-            baseRight.add(this.rightHandTarget),
+            baseRight.clone().add(this.rightHandTarget),
             lerpFactor
         );
 
@@ -504,7 +641,9 @@ class ForgeHands {
             // Track hammer velocity for strike detection
             if (this.grabbedObjectRight.userData.type === 'hammer') {
                 const prevPos = this.grabbedObjectRight.userData.prevPosition || this.grabbedObjectRight.position.clone();
-                this.grabbedObjectRight.userData.velocity = this.grabbedObjectRight.position.clone().sub(prevPos).divideScalar(delta);
+                // Prevent division by zero
+                const safeDelta = Math.max(delta, 0.001);
+                this.grabbedObjectRight.userData.velocity = this.grabbedObjectRight.position.clone().sub(prevPos).divideScalar(safeDelta);
                 this.grabbedObjectRight.userData.prevPosition = this.grabbedObjectRight.position.clone();
             }
         }
@@ -514,18 +653,39 @@ class ForgeHands {
         const handObj = hand === 'left' ? this.leftHand : this.rightHand;
         const grabRadius = 0.3;
 
-        // Find nearest grabbable object
-        const allObjects = [...this.hammers, this.currentBillet].filter(obj => obj);
+        // Check hammers
+        for (const obj of this.hammers) {
+            if (obj && obj.userData?.grabbable) {
+                const dist = handObj.position.distanceTo(obj.position);
+                if (dist < grabRadius) {
+                    if (hand === 'left') {
+                        this.grabbedObjectLeft = obj;
+                    } else {
+                        this.grabbedObjectRight = obj;
+                    }
+                    return;
+                }
+            }
+        }
 
-        for (const obj of allObjects) {
-            if (!obj.userData.grabbable) continue;
-
-            const dist = handObj.position.distanceTo(obj.position);
+        // Check current billet
+        if (this.currentBillet && this.currentBillet.userData?.grabbable) {
+            const dist = handObj.position.distanceTo(this.currentBillet.position);
             if (dist < grabRadius) {
                 if (hand === 'left') {
-                    this.grabbedObjectLeft = obj;
+                    this.grabbedObjectLeft = this.currentBillet;
                 } else {
-                    this.grabbedObjectRight = obj;
+                    this.grabbedObjectRight = this.currentBillet;
+                }
+
+                // Unlock billet from anvil when grabbed
+                if (this.billetAnvilLocked) {
+                    this.billetAnvilLocked = false;
+                    // Increment reheat count if mishandled
+                    if (this.currentBillet.userData.mishandled) {
+                        this.currentBillet.userData.reheatCount++;
+                        this.currentBillet.userData.mishandled = false; // Reset flag
+                    }
                 }
                 return;
             }
@@ -571,6 +731,10 @@ class ForgeHands {
         if (!this.billetAnvilLocked) return;
         if (!this.currentBillet) return;
 
+        const currentTime = Date.now() / 1000;
+        // Strike cooldown to prevent spam
+        if (currentTime - this.lastStrikeTime < this.strikeCooldown) return;
+
         const vel = hammer.userData.velocity;
         const speed = vel.length();
         const downwardVel = -vel.y;
@@ -584,7 +748,8 @@ class ForgeHands {
         const heatMult = this.getHeatMultiplier(heat);
         const hammerQuality = hammer.userData.stats.quality;
         const trainingBonus = 1.0 + this.training.hammerControl * 0.01;
-        const strikeAccuracy = Math.min(downwardVel / 5.0, 1.0);
+        const fatigueModifier = 1.0 - (this.fatigue * 0.3); // Up to 30% penalty at max fatigue
+        const strikeAccuracy = Math.min(downwardVel / 5.0, 1.0) * fatigueModifier;
 
         const effectiveness = heatMult * hammerQuality * trainingBonus * strikeAccuracy;
 
@@ -595,6 +760,13 @@ class ForgeHands {
         this.strikeCount++;
         this.fatigue = Math.min(1.0, this.fatigue + 0.02);
 
+        // Training progression
+        this.advanceTraining('hammerControl', effectiveness);
+        if (heat >= 0.6 && heat <= 0.75) {
+            this.advanceTraining('heatReading', 0.01);
+        }
+
+        this.lastStrikeTime = currentTime;
         this.showFeedback(`Strike! Power: ${(effectiveness * 100).toFixed(0)}%`);
     }
 
@@ -645,10 +817,27 @@ class ForgeHands {
 
         const data = this.currentBillet.userData;
 
+        // Check if billet is in forge
+        const forgePos = this.forge.position;
+        const billetPos = this.currentBillet.position;
+        const distToForge = new THREE.Vector3(
+            billetPos.x - forgePos.x,
+            billetPos.y - forgePos.y,
+            billetPos.z - forgePos.z
+        ).length();
+
+        // Heat INCREASES when in forge (within 1.5 units of forge center and forge is open)
+        if (this.forgeOpen && distToForge < 1.5 && !this.billetAnvilLocked) {
+            const heatRate = 0.15; // 15% per second
+            data.heat = Math.min(1.0, data.heat + heatRate * delta);
+        }
+
         // Heat ONLY decays when anvil-locked
         if (this.billetAnvilLocked) {
             const baseDecay = 0.01; // 1% per second
-            const reheatPenalty = Math.pow(1.05, data.reheatCount);
+            // Reheat penalty: First bad-hit cycle → +5%, each additional → +4%
+            // Formula: 1.0 + (reheatCount > 0 ? 0.05 + (reheatCount - 1) * 0.04 : 0)
+            const reheatPenalty = data.reheatCount > 0 ? 1.0 + 0.05 + (data.reheatCount - 1) * 0.04 : 1.0;
             data.heat = Math.max(0, data.heat - baseDecay * reheatPenalty * delta);
         }
 
@@ -700,6 +889,9 @@ class ForgeHands {
     }
 
     createSparks(position, intensity) {
+        // Limit max active sparks to prevent memory issues
+        if (this.activeSparks.length > 100) return;
+
         // Simple spark particle system
         for (let i = 0; i < 5 * intensity; i++) {
             const spark = new THREE.Mesh(
@@ -712,9 +904,25 @@ class ForgeHands {
                 Math.random() * 3,
                 (Math.random() - 0.5) * 2
             );
+            spark.userData.lifetime = 0.5; // seconds
+            spark.userData.age = 0;
             this.scene.add(spark);
+            this.activeSparks.push(spark);
+        }
+    }
 
-            setTimeout(() => this.scene.remove(spark), 500);
+    updateSparks(delta) {
+        // Update and remove old sparks
+        for (let i = this.activeSparks.length - 1; i >= 0; i--) {
+            const spark = this.activeSparks[i];
+            spark.userData.age += delta;
+
+            if (spark.userData.age >= spark.userData.lifetime) {
+                this.scene.remove(spark);
+                spark.geometry.dispose();
+                spark.material.dispose();
+                this.activeSparks.splice(i, 1);
+            }
         }
     }
 
@@ -769,7 +977,8 @@ class ForgeHands {
             unlocks: {
                 grindingUnlocked: this.grindingUnlocked,
                 polishingUnlocked: this.polishingUnlocked
-            }
+            },
+            rareWeaponsForged: this.rareWeaponsForged
         };
 
         try {
@@ -782,6 +991,313 @@ class ForgeHands {
             console.log('Could not save to backend');
         }
     }
+
+    advanceTraining(skill, amount) {
+        const maxLevel = 100;
+        const before = this.training[skill];
+        this.training[skill] = Math.min(maxLevel, this.training[skill] + amount);
+
+        // Auto-save on training milestones
+        if (Math.floor(before / 10) !== Math.floor(this.training[skill] / 10)) {
+            this.saveGameState();
+        }
+    }
+
+    finishWeapon() {
+        if (!this.currentBillet) return null;
+        if (!this.billetAnvilLocked) {
+            this.showFeedback('Place billet on anvil to finish');
+            return null;
+        }
+
+        const data = this.currentBillet.userData;
+
+        // Minimum shape progress required
+        if (data.shapeProgress < 1.0) {
+            this.showFeedback('Weapon not sufficiently forged');
+            return null;
+        }
+
+        // Calculate quality score (0-100)
+        const shapeScore = Math.min(100, data.shapeProgress * 20);
+        const straightnessScore = data.straightness * 30;
+        const defectPenalty = Math.min(50, data.defects * 10);
+        const trainingBonus = this.training.precisionForging * 0.2;
+
+        let quality = shapeScore + straightnessScore - defectPenalty + trainingBonus;
+        quality = Math.max(0, Math.min(100, quality));
+
+        // Determine rarity based on quality
+        const rarity = this.determineRarity(quality);
+
+        // Create weapon object
+        const weapon = {
+            type: this.selectedWeaponType,
+            rarity: rarity,
+            quality: quality,
+            metalType: data.metalType,
+            value: this.calculateValue(this.selectedWeaponType, rarity, quality),
+            defects: data.defects,
+            straightness: data.straightness
+        };
+
+        // Track rare weapons
+        const rarityIndex = this.rarities.indexOf(rarity);
+        if (rarityIndex >= 3) { // Rare or better
+            this.rareWeaponsForged++;
+            if (this.rareWeaponsForged >= 5 && !this.grindingUnlocked) {
+                this.grindingUnlocked = true;
+                this.polishingUnlocked = true;
+                this.showFeedback('GRINDING & POLISHING UNLOCKED!');
+                this.createGrindingStation();
+                this.createPolishingStation();
+            }
+        }
+
+        // Add to inventory
+        this.inventory.push(weapon);
+
+        // Training advancement
+        this.advanceTraining('precisionForging', quality * 0.01);
+
+        // Remove billet
+        this.scene.remove(this.currentBillet);
+        const index = this.physicsObjects.indexOf(this.currentBillet);
+        if (index > -1) this.physicsObjects.splice(index, 1);
+        this.currentBillet = null;
+        this.billetAnvilLocked = false;
+
+        // Save state
+        this.saveGameState();
+
+        this.showFeedback(`${rarity} ${weapon.type} forged! Quality: ${quality.toFixed(0)}`);
+        return weapon;
+    }
+
+    determineRarity(quality) {
+        // Before grinding/polishing unlock
+        if (!this.grindingUnlocked) {
+            if (quality < 30) return 'Crude';
+            if (quality < 50) return 'Common';
+            if (quality < 70) return 'Fine';
+            if (quality < 90) return 'Rare';
+            // 1% chance for Superior if near-perfect
+            if (quality >= 98 && Math.random() < 0.01) return 'Superior';
+            return 'Rare';
+        }
+
+        // After grinding/polishing unlock
+        if (quality < 30) return 'Crude';
+        if (quality < 50) return 'Common';
+        if (quality < 65) return 'Fine';
+        if (quality < 80) return 'Rare';
+        if (quality < 92) {
+            // Superior: 4-6% based on quality
+            const chance = (quality - 80) / 200;
+            return Math.random() < chance ? 'Superior' : 'Rare';
+        }
+        if (quality < 98) {
+            // Masterwork: ~0.5-1%
+            return Math.random() < 0.01 ? 'Masterwork' : 'Superior';
+        }
+        // Legendary: extremely rare
+        return Math.random() < 0.001 ? 'Legendary' : 'Masterwork';
+    }
+
+    calculateValue(weaponType, rarity, quality) {
+        const baseValues = {
+            'Dagger': 60,
+            'Short Sword': 100,
+            'Long Sword': 100,
+            'Greatsword': 200,
+            'Axe': 150,
+            'War Hammer': 120,
+            'Spear': 90,
+            'Mace': 120,
+            'Halberd': 200,
+            'Curved Blade': 100
+        };
+
+        const rarityMultipliers = {
+            'Crude': 0.5,
+            'Common': 1.0,
+            'Fine': 2.0,
+            'Rare': 4.0,
+            'Superior': 8.0,
+            'Masterwork': 16.0,
+            'Legendary': 32.0
+        };
+
+        const baseValue = baseValues[weaponType] || 100;
+        const rarityMult = rarityMultipliers[rarity] || 1.0;
+        const qualityMult = 0.5 + (quality / 100);
+
+        return Math.floor(baseValue * rarityMult * qualityMult);
+    }
+
+    quenchBillet() {
+        if (!this.currentBillet) return;
+        if (this.grabbedObjectLeft !== this.currentBillet && this.grabbedObjectRight !== this.currentBillet) {
+            this.showFeedback('Hold billet to quench');
+            return;
+        }
+
+        // Check proximity to quench tub
+        const dist = this.currentBillet.position.distanceTo(this.quenchTub.position);
+        if (dist > 1.0) return;
+
+        const data = this.currentBillet.userData;
+        const heatBefore = data.heat;
+
+        // Quenching rapidly cools the billet
+        data.heat = Math.max(0, data.heat - 0.5);
+
+        // Quenching at wrong temperature can cause defects
+        if (heatBefore > 0.7) {
+            data.defects += 0.2;
+            this.showFeedback('Quenched too hot - cracking!');
+        } else if (heatBefore > 0.3) {
+            this.showFeedback('Quenched');
+        } else {
+            this.showFeedback('Already cool');
+        }
+    }
+
+    createGrindingStation() {
+        if (this.grindingStation) return;
+
+        const station = new THREE.Mesh(
+            new THREE.BoxGeometry(0.8, 0.6, 0.6),
+            new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.8, roughness: 0.3 })
+        );
+        station.position.set(3, 0.3, -2);
+        station.castShadow = true;
+        this.scene.add(station);
+        this.grindingStation = station;
+    }
+
+    createPolishingStation() {
+        if (this.polishingStation) return;
+
+        const station = new THREE.Mesh(
+            new THREE.BoxGeometry(0.6, 0.5, 0.6),
+            new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.6 })
+        );
+        station.position.set(3, 0.25, 2);
+        station.castShadow = true;
+        this.scene.add(station);
+        this.polishingStation = station;
+    }
+
+    cycleWeaponType() {
+        const currentIndex = this.weaponTypes.indexOf(this.selectedWeaponType);
+        const nextIndex = (currentIndex + 1) % this.weaponTypes.length;
+        this.selectedWeaponType = this.weaponTypes[nextIndex];
+        this.showFeedback(`Selected: ${this.selectedWeaponType}`);
+    }
+
+    toggleInventory() {
+        const existing = document.getElementById('inventory-ui');
+        if (existing) {
+            existing.remove();
+            return;
+        }
+
+        const ui = document.createElement('div');
+        ui.id = 'inventory-ui';
+        ui.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: #ffaa44;
+            padding: 20px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            z-index: 1000;
+        `;
+
+        let html = `<h2 style="margin-top:0">Inventory (${this.inventory.length} weapons)</h2>`;
+        html += `<p>Money: $${this.money}</p>`;
+        html += `<p>Rare Weapons Forged: ${this.rareWeaponsForged}</p>`;
+        html += `<hr>`;
+
+        if (this.inventory.length === 0) {
+            html += `<p>No weapons yet. Forge something!</p>`;
+        } else {
+            this.inventory.forEach((weapon, i) => {
+                html += `<div style="margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.1);">`;
+                html += `<strong>${weapon.rarity} ${weapon.type}</strong><br>`;
+                html += `Quality: ${weapon.quality.toFixed(0)} | Value: $${weapon.value}<br>`;
+                html += `<button onclick="window.game.sellWeapon(${i})" style="margin-top:5px; padding:5px 10px; cursor:pointer;">Sell</button>`;
+                html += `</div>`;
+            });
+        }
+
+        html += `<br><button onclick="document.getElementById('inventory-ui').remove()" style="padding:10px 20px; cursor:pointer;">Close (I)</button>`;
+
+        ui.innerHTML = html;
+        document.body.appendChild(ui);
+    }
+
+    sellWeapon(index) {
+        if (index < 0 || index >= this.inventory.length) return;
+
+        const weapon = this.inventory[index];
+        this.money += weapon.value;
+        this.inventory.splice(index, 1);
+
+        this.saveGameState();
+        this.showFeedback(`Sold ${weapon.rarity} ${weapon.type} for $${weapon.value}`);
+
+        // Refresh inventory UI if open
+        const ui = document.getElementById('inventory-ui');
+        if (ui) {
+            ui.remove();
+            this.toggleInventory();
+        }
+    }
+
+    showHUD() {
+        const existing = document.getElementById('game-hud');
+        if (existing) existing.remove();
+
+        const hud = document.createElement('div');
+        hud.id = 'game-hud';
+        hud.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: #ffaa44;
+            font-family: monospace;
+            font-size: 14px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 100;
+        `;
+
+        let html = `<div>Selected Weapon: ${this.selectedWeaponType}</div>`;
+        html += `<div>Money: $${this.money}</div>`;
+        html += `<div>Inventory: ${this.inventory.length} weapons</div>`;
+        html += `<br>`;
+        html += `<div style="font-size:12px; opacity:0.7;">`;
+        html += `R - Change Weapon | F - Finish | Q - Quench<br>`;
+        html += `I - Inventory | WASD - Move | Space - Jump<br>`;
+        html += `LMB - Left Hand | RMB - Right Hand`;
+        html += `</div>`;
+
+        hud.innerHTML = html;
+        document.body.appendChild(hud);
+    }
+
+    updateHUD() {
+        this.showHUD();
+    }
 }
 
 // Initialize game
@@ -789,8 +1305,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const game = new ForgeHands();
     window.game = game;
 
-    // Add test billet
-    setTimeout(() => {
-        game.createBillet('iron');
-    }, 1000);
+    // Add test billet (synchronously after game is ready)
+    game.createBillet('iron');
 });
