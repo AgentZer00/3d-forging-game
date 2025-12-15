@@ -81,6 +81,21 @@ class ForgeHands {
         // Pointer lock
         this.pointerLocked = false;
 
+        // Active sparks tracking
+        this.activeSparks = [];
+
+        // Event listener references for cleanup
+        this.eventListeners = {
+            mousedown: null,
+            mouseup: null,
+            mousemove: null,
+            contextmenu: null,
+            keydown: null,
+            keyup: null,
+            pointerlockchange: null,
+            resize: null
+        };
+
         this.init();
     }
 
@@ -303,6 +318,7 @@ class ForgeHands {
         hammer.position.set(-1, 0.9, 1);
         this.scene.add(hammer);
         this.hammers.push(hammer);
+        this.physicsObjects.push(hammer);
     }
 
     createHammer(stats) {
@@ -357,21 +373,23 @@ class ForgeHands {
 
         this.scene.add(billet);
         this.currentBillet = billet;
+        this.physicsObjects.push(billet);
         return billet;
     }
 
     setupEventListeners() {
         // Mouse controls
-        window.addEventListener('mousedown', (e) => {
+        this.eventListeners.mousedown = (e) => {
             if (!this.pointerLocked) return;
 
             if (e.button === 0) this.leftMouseDown = true;
             if (e.button === 2) this.rightMouseDown = true;
 
             e.preventDefault();
-        });
+        };
+        window.addEventListener('mousedown', this.eventListeners.mousedown);
 
-        window.addEventListener('mouseup', (e) => {
+        this.eventListeners.mouseup = (e) => {
             if (e.button === 0) {
                 this.leftMouseDown = false;
                 this.releaseGrab('left');
@@ -380,9 +398,10 @@ class ForgeHands {
                 this.rightMouseDown = false;
                 this.releaseGrab('right');
             }
-        });
+        };
+        window.addEventListener('mouseup', this.eventListeners.mouseup);
 
-        window.addEventListener('mousemove', (e) => {
+        this.eventListeners.mousemove = (e) => {
             if (!this.pointerLocked) return;
 
             // Camera rotation
@@ -404,30 +423,75 @@ class ForgeHands {
                     this.rightHandTarget.y -= e.movementY * moveScale;
                 }
             }
-        });
+        };
+        window.addEventListener('mousemove', this.eventListeners.mousemove);
 
-        window.addEventListener('contextmenu', (e) => e.preventDefault());
+        this.eventListeners.contextmenu = (e) => e.preventDefault();
+        window.addEventListener('contextmenu', this.eventListeners.contextmenu);
 
         // Keyboard
-        window.addEventListener('keydown', (e) => {
+        this.eventListeners.keydown = (e) => {
             this.keys[e.key.toLowerCase()] = true;
-        });
+        };
+        window.addEventListener('keydown', this.eventListeners.keydown);
 
-        window.addEventListener('keyup', (e) => {
+        this.eventListeners.keyup = (e) => {
             this.keys[e.key.toLowerCase()] = false;
-        });
+        };
+        window.addEventListener('keyup', this.eventListeners.keyup);
 
         // Pointer lock
-        document.addEventListener('pointerlockchange', () => {
+        this.eventListeners.pointerlockchange = () => {
             this.pointerLocked = document.pointerLockElement === this.renderer.domElement;
-        });
+        };
+        document.addEventListener('pointerlockchange', this.eventListeners.pointerlockchange);
 
         // Window resize
-        window.addEventListener('resize', () => {
+        this.eventListeners.resize = () => {
             this.camera.aspect = window.innerWidth / window.innerHeight;
             this.camera.updateProjectionMatrix();
             this.renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+        window.addEventListener('resize', this.eventListeners.resize);
+    }
+
+    destroy() {
+        // Clean up event listeners
+        if (this.eventListeners.mousedown) {
+            window.removeEventListener('mousedown', this.eventListeners.mousedown);
+        }
+        if (this.eventListeners.mouseup) {
+            window.removeEventListener('mouseup', this.eventListeners.mouseup);
+        }
+        if (this.eventListeners.mousemove) {
+            window.removeEventListener('mousemove', this.eventListeners.mousemove);
+        }
+        if (this.eventListeners.contextmenu) {
+            window.removeEventListener('contextmenu', this.eventListeners.contextmenu);
+        }
+        if (this.eventListeners.keydown) {
+            window.removeEventListener('keydown', this.eventListeners.keydown);
+        }
+        if (this.eventListeners.keyup) {
+            window.removeEventListener('keyup', this.eventListeners.keyup);
+        }
+        if (this.eventListeners.pointerlockchange) {
+            document.removeEventListener('pointerlockchange', this.eventListeners.pointerlockchange);
+        }
+        if (this.eventListeners.resize) {
+            window.removeEventListener('resize', this.eventListeners.resize);
+        }
+
+        // Clean up Three.js resources
+        this.renderer.dispose();
+
+        // Clean up sparks
+        this.activeSparks.forEach(spark => {
+            this.scene.remove(spark);
+            spark.geometry.dispose();
+            spark.material.dispose();
         });
+        this.activeSparks = [];
     }
 
     animate() {
@@ -439,10 +503,24 @@ class ForgeHands {
         this.updateHands(delta);
         this.updatePhysics(delta);
         this.updateHeatSystem(delta);
+        this.updateFatigue(delta);
+        this.updateSparks(delta);
         this.updateForgeEffects();
         this.checkAnvilSnap();
 
         this.renderer.render(this.scene, this.camera);
+    }
+
+    updateFatigue(delta) {
+        // Fatigue recovers when: Standing still, Resting hands, Not striking
+        const isMoving = this.velocity.length() > 0.01;
+        const isUsingHands = this.leftMouseDown || this.rightMouseDown;
+
+        if (!isMoving && !isUsingHands) {
+            // Recover fatigue when resting
+            const recoveryRate = 0.05; // 5% per second
+            this.fatigue = Math.max(0, this.fatigue - recoveryRate * delta);
+        }
     }
 
     updateMovement(delta) {
@@ -477,12 +555,12 @@ class ForgeHands {
         const baseRight = this.camera.position.clone().add(new THREE.Vector3(0.3, -0.3, -0.5));
 
         this.leftHand.position.lerp(
-            baseLeft.add(this.leftHandTarget),
+            baseLeft.clone().add(this.leftHandTarget),
             lerpFactor
         );
 
         this.rightHand.position.lerp(
-            baseRight.add(this.rightHandTarget),
+            baseRight.clone().add(this.rightHandTarget),
             lerpFactor
         );
 
@@ -504,7 +582,9 @@ class ForgeHands {
             // Track hammer velocity for strike detection
             if (this.grabbedObjectRight.userData.type === 'hammer') {
                 const prevPos = this.grabbedObjectRight.userData.prevPosition || this.grabbedObjectRight.position.clone();
-                this.grabbedObjectRight.userData.velocity = this.grabbedObjectRight.position.clone().sub(prevPos).divideScalar(delta);
+                // Prevent division by zero
+                const safeDelta = Math.max(delta, 0.001);
+                this.grabbedObjectRight.userData.velocity = this.grabbedObjectRight.position.clone().sub(prevPos).divideScalar(safeDelta);
                 this.grabbedObjectRight.userData.prevPosition = this.grabbedObjectRight.position.clone();
             }
         }
@@ -514,18 +594,39 @@ class ForgeHands {
         const handObj = hand === 'left' ? this.leftHand : this.rightHand;
         const grabRadius = 0.3;
 
-        // Find nearest grabbable object
-        const allObjects = [...this.hammers, this.currentBillet].filter(obj => obj);
+        // Check hammers
+        for (const obj of this.hammers) {
+            if (obj && obj.userData?.grabbable) {
+                const dist = handObj.position.distanceTo(obj.position);
+                if (dist < grabRadius) {
+                    if (hand === 'left') {
+                        this.grabbedObjectLeft = obj;
+                    } else {
+                        this.grabbedObjectRight = obj;
+                    }
+                    return;
+                }
+            }
+        }
 
-        for (const obj of allObjects) {
-            if (!obj.userData.grabbable) continue;
-
-            const dist = handObj.position.distanceTo(obj.position);
+        // Check current billet
+        if (this.currentBillet && this.currentBillet.userData?.grabbable) {
+            const dist = handObj.position.distanceTo(this.currentBillet.position);
             if (dist < grabRadius) {
                 if (hand === 'left') {
-                    this.grabbedObjectLeft = obj;
+                    this.grabbedObjectLeft = this.currentBillet;
                 } else {
-                    this.grabbedObjectRight = obj;
+                    this.grabbedObjectRight = this.currentBillet;
+                }
+
+                // Unlock billet from anvil when grabbed
+                if (this.billetAnvilLocked) {
+                    this.billetAnvilLocked = false;
+                    // Increment reheat count if mishandled
+                    if (this.currentBillet.userData.mishandled) {
+                        this.currentBillet.userData.reheatCount++;
+                        this.currentBillet.userData.mishandled = false; // Reset flag
+                    }
                 }
                 return;
             }
@@ -645,10 +746,27 @@ class ForgeHands {
 
         const data = this.currentBillet.userData;
 
+        // Check if billet is in forge
+        const forgePos = this.forge.position;
+        const billetPos = this.currentBillet.position;
+        const distToForge = new THREE.Vector3(
+            billetPos.x - forgePos.x,
+            billetPos.y - forgePos.y,
+            billetPos.z - forgePos.z
+        ).length();
+
+        // Heat INCREASES when in forge (within 1.5 units of forge center and forge is open)
+        if (this.forgeOpen && distToForge < 1.5 && !this.billetAnvilLocked) {
+            const heatRate = 0.15; // 15% per second
+            data.heat = Math.min(1.0, data.heat + heatRate * delta);
+        }
+
         // Heat ONLY decays when anvil-locked
         if (this.billetAnvilLocked) {
             const baseDecay = 0.01; // 1% per second
-            const reheatPenalty = Math.pow(1.05, data.reheatCount);
+            // Reheat penalty: First bad-hit cycle → +5%, each additional → +4%
+            // Formula: 1.0 + (reheatCount > 0 ? 0.05 + (reheatCount - 1) * 0.04 : 0)
+            const reheatPenalty = data.reheatCount > 0 ? 1.0 + 0.05 + (data.reheatCount - 1) * 0.04 : 1.0;
             data.heat = Math.max(0, data.heat - baseDecay * reheatPenalty * delta);
         }
 
@@ -700,6 +818,9 @@ class ForgeHands {
     }
 
     createSparks(position, intensity) {
+        // Limit max active sparks to prevent memory issues
+        if (this.activeSparks.length > 100) return;
+
         // Simple spark particle system
         for (let i = 0; i < 5 * intensity; i++) {
             const spark = new THREE.Mesh(
@@ -712,9 +833,25 @@ class ForgeHands {
                 Math.random() * 3,
                 (Math.random() - 0.5) * 2
             );
+            spark.userData.lifetime = 0.5; // seconds
+            spark.userData.age = 0;
             this.scene.add(spark);
+            this.activeSparks.push(spark);
+        }
+    }
 
-            setTimeout(() => this.scene.remove(spark), 500);
+    updateSparks(delta) {
+        // Update and remove old sparks
+        for (let i = this.activeSparks.length - 1; i >= 0; i--) {
+            const spark = this.activeSparks[i];
+            spark.userData.age += delta;
+
+            if (spark.userData.age >= spark.userData.lifetime) {
+                this.scene.remove(spark);
+                spark.geometry.dispose();
+                spark.material.dispose();
+                this.activeSparks.splice(i, 1);
+            }
         }
     }
 
@@ -789,8 +926,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const game = new ForgeHands();
     window.game = game;
 
-    // Add test billet
-    setTimeout(() => {
-        game.createBillet('iron');
-    }, 1000);
+    // Add test billet (synchronously after game is ready)
+    game.createBillet('iron');
 });
