@@ -108,6 +108,28 @@ class ForgeHands {
             resize: null
         };
 
+        // Sound system
+        this.audioContext = null;
+        this.sounds = {};
+
+        // Grinding/Polishing state
+        this.isGrinding = false;
+        this.isPolishing = false;
+        this.grindingProgress = 0;
+        this.polishingProgress = 0;
+
+        // Metal types with properties
+        this.metalTypes = {
+            'iron': { heatRate: 1.0, forgingBonus: 0, defectResistance: 0, value: 1.0 },
+            'steel': { heatRate: 0.9, forgingBonus: 0.1, defectResistance: 0.1, value: 1.5 },
+            'bronze': { heatRate: 1.2, forgingBonus: 0, defectResistance: -0.1, value: 0.8 },
+            'mithril': { heatRate: 0.7, forgingBonus: 0.2, defectResistance: 0.2, value: 3.0 },
+            'damascus': { heatRate: 0.8, forgingBonus: 0.15, defectResistance: 0.3, value: 4.0 }
+        };
+
+        // Available billets (metal stock)
+        this.availableBillets = ['iron', 'iron', 'iron', 'steel', 'bronze'];
+
         this.init();
     }
 
@@ -120,8 +142,209 @@ class ForgeHands {
         this.createHands();
         this.createTools();
         this.setupEventListeners();
+        this.initAudio();
         this.loadGameState();
         this.animate();
+    }
+
+    initAudio() {
+        // Initialize Web Audio API
+        this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+        // Create sound generators
+        this.sounds = {
+            hammer: () => this.playHammerSound(),
+            quench: () => this.playQuenchSound(),
+            grind: () => this.playGrindSound(),
+            forge: () => this.playForgeAmbience(),
+            error: () => this.playErrorSound(),
+            success: () => this.playSuccessSound()
+        };
+    }
+
+    playHammerSound() {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        // Create metallic impact sound
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.1);
+
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2000, now);
+        filter.frequency.exponentialRampToValueAtTime(200, now + 0.15);
+
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.2);
+
+        // Add noise burst for impact
+        const noise = ctx.createBufferSource();
+        const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.1, ctx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.5;
+        }
+        noise.buffer = noiseBuffer;
+
+        const noiseGain = ctx.createGain();
+        const noiseFilter = ctx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.value = 3000;
+
+        noiseGain.gain.setValueAtTime(0.15, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        noise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+
+        noise.start(now);
+    }
+
+    playQuenchSound() {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        // Sizzle/steam sound
+        const noise = ctx.createBufferSource();
+        const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 1.5, ctx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1);
+        }
+        noise.buffer = noiseBuffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(4000, now);
+        filter.frequency.exponentialRampToValueAtTime(1000, now + 1.5);
+        filter.Q.value = 2;
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        noise.start(now);
+    }
+
+    playGrindSound() {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        // Grinding wheel sound
+        const noise = ctx.createBufferSource();
+        const noiseBuffer = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
+        const data = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < data.length; i++) {
+            data[i] = (Math.random() * 2 - 1);
+        }
+        noise.buffer = noiseBuffer;
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'highpass';
+        filter.frequency.value = 2000;
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        noise.start(now);
+    }
+
+    playForgeAmbience() {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        // Low rumble for forge
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sawtooth';
+        osc.frequency.value = 60;
+
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.5);
+    }
+
+    playErrorSound() {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.setValueAtTime(150, now + 0.1);
+
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.2);
+    }
+
+    playSuccessSound() {
+        if (!this.audioContext) return;
+
+        const ctx = this.audioContext;
+        const now = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.setValueAtTime(660, now + 0.1);
+        osc.frequency.setValueAtTime(880, now + 0.2);
+
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.4);
     }
 
     setupScene() {
@@ -318,23 +541,123 @@ class ForgeHands {
     }
 
     createTools() {
-        // Starting hammer
-        const hammer = this.createHammer({
+        // Rusty Hammer - Poor quality starting tool
+        const rustyHammer = this.createHammer({
+            name: 'Rusty Hammer',
+            mass: 2.0,
+            balance: 0.6,  // Poor balance
+            faceSize: 0.8,
+            quality: 0.6,
+            speedModifier: 1.2,  // Slower (20% more time)
+            durability: 100,
+            maxDurability: 100,
+            color: 0x5a4a3a  // Rusty color
+        });
+        rustyHammer.position.set(-1.5, 0.9, 1.5);
+        this.scene.add(rustyHammer);
+        this.hammers.push(rustyHammer);
+        this.physicsObjects.push(rustyHammer);
+
+        // Steel Hammer - Standard quality
+        const steelHammer = this.createHammer({
             name: 'Steel Hammer',
             mass: 1.5,
             balance: 1.0,
             faceSize: 1.0,
-            quality: 1.0,
-            speedModifier: 1.0
+            quality: 0.8,
+            speedModifier: 1.0,
+            durability: 150,
+            maxDurability: 150,
+            color: 0x6a6a6a
         });
-        hammer.position.set(-1, 0.9, 1);
-        this.scene.add(hammer);
-        this.hammers.push(hammer);
-        this.physicsObjects.push(hammer);
+        steelHammer.position.set(-1, 0.9, 1);
+        this.scene.add(steelHammer);
+        this.hammers.push(steelHammer);
+        this.physicsObjects.push(steelHammer);
+
+        // Master Hammer - Best quality (harder to find)
+        const masterHammer = this.createHammer({
+            name: 'Master Hammer',
+            mass: 1.3,
+            balance: 1.3,  // Wider sweet spot
+            faceSize: 1.2,
+            quality: 1.2,  // Reduces mistake penalties
+            speedModifier: 0.8,  // 20% faster
+            durability: 200,
+            maxDurability: 200,
+            color: 0x8a8a9a
+        });
+        masterHammer.position.set(-0.5, 0.9, 0.5);
+        this.scene.add(masterHammer);
+        this.hammers.push(masterHammer);
+        this.physicsObjects.push(masterHammer);
+
+        // Tongs for handling hot metal
+        this.createTongs();
+    }
+
+    createTongs() {
+        const tongsGroup = new THREE.Group();
+
+        // Left arm
+        const leftArm = new THREE.Mesh(
+            new THREE.BoxGeometry(0.02, 0.4, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.9, roughness: 0.3 })
+        );
+        leftArm.position.set(-0.025, 0, 0);
+        tongsGroup.add(leftArm);
+
+        // Right arm
+        const rightArm = new THREE.Mesh(
+            new THREE.BoxGeometry(0.02, 0.4, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0x3a3a3a, metalness: 0.9, roughness: 0.3 })
+        );
+        rightArm.position.set(0.025, 0, 0);
+        tongsGroup.add(rightArm);
+
+        // Jaws
+        const leftJaw = new THREE.Mesh(
+            new THREE.BoxGeometry(0.03, 0.08, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.9, roughness: 0.3 })
+        );
+        leftJaw.position.set(-0.025, 0.24, 0);
+        tongsGroup.add(leftJaw);
+
+        const rightJaw = new THREE.Mesh(
+            new THREE.BoxGeometry(0.03, 0.08, 0.02),
+            new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.9, roughness: 0.3 })
+        );
+        rightJaw.position.set(0.025, 0.24, 0);
+        tongsGroup.add(rightJaw);
+
+        // Handle hinge
+        const hinge = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.015, 0.06, 8),
+            new THREE.MeshStandardMaterial({ color: 0x5a5a5a, metalness: 0.9, roughness: 0.3 })
+        );
+        hinge.rotation.x = Math.PI / 2;
+        tongsGroup.add(hinge);
+
+        tongsGroup.position.set(1.5, 0.9, -1);
+        tongsGroup.userData.type = 'tongs';
+        tongsGroup.userData.grabbable = true;
+        tongsGroup.userData.velocity = new THREE.Vector3();
+        tongsGroup.userData.stats = {
+            name: 'Iron Tongs',
+            gripStrength: 1.0,
+            durability: 100,
+            maxDurability: 100
+        };
+        tongsGroup.userData.heldBillet = null;  // For tracking held billet
+
+        this.scene.add(tongsGroup);
+        this.tongs.push(tongsGroup);
+        this.physicsObjects.push(tongsGroup);
     }
 
     createHammer(stats) {
         const hammerGroup = new THREE.Group();
+        const headColor = stats.color || 0x4a4a4a;
 
         // Handle
         const handle = new THREE.Mesh(
@@ -344,10 +667,11 @@ class ForgeHands {
         handle.position.y = -0.2;
         hammerGroup.add(handle);
 
-        // Head
+        // Head - size varies by faceSize stat
+        const faceScale = stats.faceSize || 1.0;
         const head = new THREE.Mesh(
-            new THREE.BoxGeometry(0.06, 0.08, 0.12),
-            new THREE.MeshStandardMaterial({ color: 0x4a4a4a, metalness: 0.9, roughness: 0.2 })
+            new THREE.BoxGeometry(0.06 * faceScale, 0.08, 0.12 * faceScale),
+            new THREE.MeshStandardMaterial({ color: headColor, metalness: 0.9, roughness: 0.2 })
         );
         head.position.y = 0.04;
         head.castShadow = true;
@@ -458,6 +782,14 @@ class ForgeHands {
             if (e.key.toLowerCase() === 'r' && this.pointerLocked) {
                 this.cycleWeaponType();
             }
+            // Spawn new billet with different metal
+            if (e.key.toLowerCase() === 'n' && this.pointerLocked) {
+                this.spawnNewBillet();
+            }
+            // Cycle metal type for next billet
+            if (e.key.toLowerCase() === 'm' && this.pointerLocked) {
+                this.cycleMetalType();
+            }
         };
         window.addEventListener('keydown', this.eventListeners.keydown);
 
@@ -544,6 +876,8 @@ class ForgeHands {
         this.updateSparks(delta);
         this.updateForgeEffects();
         this.checkAnvilSnap();
+        this.updateGrinding(delta);
+        this.updatePolishing(delta);
         this.updateHUD();
 
         this.renderer.render(this.scene, this.camera);
@@ -668,31 +1002,129 @@ class ForgeHands {
             }
         }
 
-        // Check current billet
+        // Check tongs
+        for (const tong of this.tongs) {
+            if (tong && tong.userData?.grabbable) {
+                const dist = handObj.position.distanceTo(tong.position);
+                if (dist < grabRadius) {
+                    if (hand === 'left') {
+                        this.grabbedObjectLeft = tong;
+                    } else {
+                        this.grabbedObjectRight = tong;
+                    }
+                    this.activeTongs = tong;
+                    return;
+                }
+            }
+        }
+
+        // Check current billet - MUST use tongs if billet is hot
         if (this.currentBillet && this.currentBillet.userData?.grabbable) {
             const dist = handObj.position.distanceTo(this.currentBillet.position);
             if (dist < grabRadius) {
-                if (hand === 'left') {
-                    this.grabbedObjectLeft = this.currentBillet;
-                } else {
-                    this.grabbedObjectRight = this.currentBillet;
-                }
+                const heat = this.currentBillet.userData.heat;
 
-                // Unlock billet from anvil when grabbed
-                if (this.billetAnvilLocked) {
-                    this.billetAnvilLocked = false;
-                    // Increment reheat count if mishandled
-                    if (this.currentBillet.userData.mishandled) {
-                        this.currentBillet.userData.reheatCount++;
-                        this.currentBillet.userData.mishandled = false; // Reset flag
+                // If billet is hot (>0.3), require tongs
+                if (heat > 0.3) {
+                    // Check if the OTHER hand is holding tongs
+                    const otherGrabbedObj = hand === 'left' ? this.grabbedObjectRight : this.grabbedObjectLeft;
+                    if (otherGrabbedObj?.userData?.type === 'tongs') {
+                        // Grab billet WITH tongs
+                        if (hand === 'left') {
+                            this.grabbedObjectLeft = this.currentBillet;
+                        } else {
+                            this.grabbedObjectRight = this.currentBillet;
+                        }
+                        otherGrabbedObj.userData.heldBillet = this.currentBillet;
+                        this.unlockBilletFromAnvil();
+                        this.showFeedback('Grabbed hot metal with tongs');
+                    } else {
+                        // Try to pick up hot metal without tongs - can't!
+                        this.showFeedback('Too hot! Use tongs');
+                        this.playErrorSound();
+                        return;
                     }
+                } else {
+                    // Cool billet can be grabbed by hand
+                    if (hand === 'left') {
+                        this.grabbedObjectLeft = this.currentBillet;
+                    } else {
+                        this.grabbedObjectRight = this.currentBillet;
+                    }
+                    this.unlockBilletFromAnvil();
                 }
                 return;
             }
         }
     }
 
+    unlockBilletFromAnvil() {
+        // Unlock billet from anvil when grabbed
+        if (this.billetAnvilLocked) {
+            this.billetAnvilLocked = false;
+            // Increment reheat count if mishandled
+            if (this.currentBillet && this.currentBillet.userData.mishandled) {
+                this.currentBillet.userData.reheatCount++;
+                this.currentBillet.userData.mishandled = false; // Reset flag
+            }
+        }
+    }
+
     releaseGrab(hand) {
+        const releasedObj = hand === 'left' ? this.grabbedObjectLeft : this.grabbedObjectRight;
+
+        // Handle billet release - CANNOT drop freely
+        if (releasedObj && releasedObj.userData?.type === 'billet') {
+            // Check if near anvil snap zone
+            const pos = releasedObj.position;
+            const zone = this.anvilSnapZone;
+
+            if (pos.x >= zone.min.x && pos.x <= zone.max.x &&
+                pos.y >= zone.min.y && pos.y <= zone.max.y &&
+                pos.z >= zone.min.z && pos.z <= zone.max.z) {
+                // Allow drop - billet will snap to anvil via checkAnvilSnap
+                if (hand === 'left') {
+                    this.grabbedObjectLeft = null;
+                } else {
+                    this.grabbedObjectRight = null;
+                }
+                // Clear tongs held billet reference
+                this.clearTongsHeldBillet();
+            } else if (this.isNearGrindingStation(pos) && this.grindingUnlocked) {
+                // Allow drop at grinding station
+                if (hand === 'left') {
+                    this.grabbedObjectLeft = null;
+                } else {
+                    this.grabbedObjectRight = null;
+                }
+                this.clearTongsHeldBillet();
+                this.startGrinding();
+            } else if (this.isNearPolishingStation(pos) && this.polishingUnlocked) {
+                // Allow drop at polishing station
+                if (hand === 'left') {
+                    this.grabbedObjectLeft = null;
+                } else {
+                    this.grabbedObjectRight = null;
+                }
+                this.clearTongsHeldBillet();
+                this.startPolishing();
+            } else {
+                // Billet stays in hand - CANNOT drop freely!
+                this.showFeedback('Cannot drop here. Place on anvil.');
+                return; // Don't release!
+            }
+            return;
+        }
+
+        // Handle tongs release
+        if (releasedObj && releasedObj.userData?.type === 'tongs') {
+            if (releasedObj.userData.heldBillet) {
+                // Tongs are holding a billet - release both
+                releasedObj.userData.heldBillet = null;
+            }
+            this.activeTongs = null;
+        }
+
         if (hand === 'left') {
             this.grabbedObjectLeft = null;
         } else {
@@ -704,6 +1136,25 @@ class ForgeHands {
                 this.checkHammerStrike(obj);
             }
         }
+    }
+
+    clearTongsHeldBillet() {
+        // Clear tongs reference when billet is released
+        for (const tong of this.tongs) {
+            if (tong.userData.heldBillet === this.currentBillet) {
+                tong.userData.heldBillet = null;
+            }
+        }
+    }
+
+    isNearGrindingStation(pos) {
+        if (!this.grindingStation) return false;
+        return pos.distanceTo(this.grindingStation.position) < 1.0;
+    }
+
+    isNearPolishingStation(pos) {
+        if (!this.polishingStation) return false;
+        return pos.distanceTo(this.polishingStation.position) < 1.0;
     }
 
     checkAnvilSnap() {
@@ -743,31 +1194,59 @@ class ForgeHands {
         if (downwardVel < 2.0) return; // Minimum downward speed
         if (hammer.position.distanceTo(this.currentBillet.position) > 0.3) return;
 
+        const stats = hammer.userData.stats;
+
         // Calculate forging effectiveness
         const heat = this.currentBillet.userData.heat;
         const heatMult = this.getHeatMultiplier(heat);
-        const hammerQuality = hammer.userData.stats.quality;
+        const hammerQuality = stats.quality;
         const trainingBonus = 1.0 + this.training.hammerControl * 0.01;
         const fatigueModifier = 1.0 - (this.fatigue * 0.3); // Up to 30% penalty at max fatigue
-        const strikeAccuracy = Math.min(downwardVel / 5.0, 1.0) * fatigueModifier;
+
+        // Hammer balance affects strike accuracy - poor balance = off-axis hits
+        const balanceModifier = stats.balance || 1.0;
+        const balanceRandom = 1.0 - ((1.0 - balanceModifier) * Math.random() * 0.5);
+
+        const strikeAccuracy = Math.min(downwardVel / 5.0, 1.0) * fatigueModifier * balanceRandom;
 
         const effectiveness = heatMult * hammerQuality * trainingBonus * strikeAccuracy;
 
-        // Apply forging
-        this.applyForging(effectiveness, heat);
+        // Apply speed modifier (affects shape progress rate)
+        const speedModifier = stats.speedModifier || 1.0;
+
+        // Apply forging with metal properties
+        this.applyForging(effectiveness, heat, speedModifier);
+
+        // Tool wear - durability decreases with use
+        if (stats.durability > 0) {
+            stats.durability -= 0.5;
+            if (stats.durability <= stats.maxDurability * 0.2) {
+                // Tool is getting worn
+                stats.quality = Math.max(0.4, stats.quality * 0.995);
+            }
+        }
+
+        // Play hammer sound
+        this.playHammerSound();
 
         // Fatigue
         this.strikeCount++;
-        this.fatigue = Math.min(1.0, this.fatigue + 0.02);
+        const massPenalty = (stats.mass || 1.5) / 1.5; // Heavier hammers tire faster
+        this.fatigue = Math.min(1.0, this.fatigue + 0.02 * massPenalty);
 
         // Training progression
-        this.advanceTraining('hammerControl', effectiveness);
+        this.advanceTraining('hammerControl', effectiveness * 0.1);
         if (heat >= 0.6 && heat <= 0.75) {
             this.advanceTraining('heatReading', 0.01);
         }
 
+        // Material knowledge advancement when working with rare metals
+        const metalType = this.currentBillet.userData.metalType;
+        if (metalType !== 'iron' && metalType !== 'bronze') {
+            this.advanceTraining('materialKnowledge', 0.005);
+        }
+
         this.lastStrikeTime = currentTime;
-        this.showFeedback(`Strike! Power: ${(effectiveness * 100).toFixed(0)}%`);
     }
 
     getHeatMultiplier(heat) {
@@ -784,31 +1263,47 @@ class ForgeHands {
         return 0.5 + (heat - 0.4) * 2.5;
     }
 
-    applyForging(effectiveness, heat) {
+    applyForging(effectiveness, heat, speedModifier = 1.0) {
         if (!this.currentBillet) return;
 
         const data = this.currentBillet.userData;
+        const metalType = data.metalType || 'iron';
+        const metalProps = this.metalTypes[metalType] || this.metalTypes.iron;
 
-        // Shape progress
-        data.shapeProgress += effectiveness * 0.05;
+        // Shape progress - modified by speed and metal properties
+        const baseProgress = 0.05;
+        const metalBonus = 1.0 + metalProps.forgingBonus;
+        const progressGain = baseProgress * effectiveness * metalBonus / speedModifier;
+        data.shapeProgress += progressGain;
 
-        // Defects from bad hits
+        // Defects from bad hits - metal defect resistance helps
+        const defectResistance = metalProps.defectResistance || 0;
+        const materialKnowledgeBonus = this.training.materialKnowledge * 0.005; // Up to 50% reduction at max
+
         if (effectiveness < 0.3) {
-            data.defects += 0.1;
+            const defectAmount = 0.1 * (1.0 - defectResistance - materialKnowledgeBonus);
+            data.defects += Math.max(0, defectAmount);
             data.mishandled = true;
         }
 
         if (heat < 0.4 || heat > 0.85) {
-            data.defects += 0.05;
+            const tempDefectAmount = 0.05 * (1.0 - defectResistance * 0.5);
+            data.defects += Math.max(0, tempDefectAmount);
+        }
+
+        // Straightness affected by off-axis hits
+        if (effectiveness < 0.5) {
+            data.straightness *= 0.995;
         }
 
         // Visual deformation
         this.currentBillet.scale.y *= 0.95;
         this.currentBillet.scale.x *= 1.02;
 
-        // Sparks based on heat
+        // Sparks based on heat - different metals spark differently
         if (heat > 0.5) {
-            this.createSparks(this.currentBillet.position, heat);
+            const sparkIntensity = heat * (metalType === 'steel' ? 1.2 : metalType === 'mithril' ? 0.5 : 1.0);
+            this.createSparks(this.currentBillet.position, sparkIntensity);
         }
     }
 
@@ -1149,6 +1644,9 @@ class ForgeHands {
         const data = this.currentBillet.userData;
         const heatBefore = data.heat;
 
+        // Play quench sound
+        this.playQuenchSound();
+
         // Quenching rapidly cools the billet
         data.heat = Math.max(0, data.heat - 0.5);
 
@@ -1156,11 +1654,170 @@ class ForgeHands {
         if (heatBefore > 0.7) {
             data.defects += 0.2;
             this.showFeedback('Quenched too hot - cracking!');
+            this.playErrorSound();
         } else if (heatBefore > 0.3) {
             this.showFeedback('Quenched');
         } else {
             this.showFeedback('Already cool');
         }
+    }
+
+    // ========== GRINDING SYSTEM ==========
+    startGrinding() {
+        if (!this.currentBillet) return;
+        if (!this.grindingUnlocked) {
+            this.showFeedback('Grinding not yet unlocked');
+            return;
+        }
+
+        const data = this.currentBillet.userData;
+
+        // Must be sufficiently forged
+        if (data.shapeProgress < 1.0) {
+            this.showFeedback('Forge the weapon first');
+            return;
+        }
+
+        // Must be cool
+        if (data.heat > 0.1) {
+            this.showFeedback('Metal too hot to grind');
+            return;
+        }
+
+        this.isGrinding = true;
+        this.grindingProgress = 0;
+        this.currentBillet.position.copy(this.grindingStation.position);
+        this.currentBillet.position.y += 0.5;
+        this.showFeedback('Grinding... Hold G to continue');
+    }
+
+    updateGrinding(delta) {
+        if (!this.isGrinding || !this.currentBillet) return;
+
+        // Must hold G key to grind
+        if (!this.keys.g) return;
+
+        const data = this.currentBillet.userData;
+
+        // Grinding progress
+        this.grindingProgress += delta * 0.2; // Takes ~5 seconds
+
+        // Fatigue affects grinding quality
+        const fatigueEffect = 1.0 - (this.fatigue * 0.5);
+
+        // Grinding removes surface imperfections
+        if (this.grindingProgress < 1.0) {
+            // Slight straightness improvement
+            data.straightness = Math.min(1.0, data.straightness + 0.001 * fatigueEffect);
+
+            // Can reveal existing flaws (defects become visible)
+            // If over-grinding (progress > 0.8), risks damage
+            if (this.grindingProgress > 0.8) {
+                const overgrindRisk = (this.grindingProgress - 0.8) * 0.1;
+                if (Math.random() < overgrindRisk) {
+                    data.defects += 0.02;
+                }
+            }
+
+            // Play grinding sound periodically
+            if (Math.random() < 0.1) {
+                this.playGrindSound();
+            }
+        } else {
+            // Grinding complete
+            this.isGrinding = false;
+            this.grindingProgress = 0;
+
+            // Apply grinding bonus
+            data.groundLevel = (data.groundLevel || 0) + 1;
+
+            this.showFeedback('Grinding complete');
+            this.playSuccessSound();
+
+            // Return billet to anvil area
+            this.currentBillet.position.set(0, 1.15, 0);
+            this.billetAnvilLocked = true;
+        }
+
+        // Increase fatigue
+        this.fatigue = Math.min(1.0, this.fatigue + delta * 0.01);
+    }
+
+    // ========== POLISHING SYSTEM ==========
+    startPolishing() {
+        if (!this.currentBillet) return;
+        if (!this.polishingUnlocked) {
+            this.showFeedback('Polishing not yet unlocked');
+            return;
+        }
+
+        const data = this.currentBillet.userData;
+
+        // Must be sufficiently forged
+        if (data.shapeProgress < 1.0) {
+            this.showFeedback('Forge the weapon first');
+            return;
+        }
+
+        // Must be cool
+        if (data.heat > 0.1) {
+            this.showFeedback('Metal too hot to polish');
+            return;
+        }
+
+        // Should be ground first for best results
+        if (!data.groundLevel || data.groundLevel < 1) {
+            this.showFeedback('Grind the weapon first for best results');
+        }
+
+        this.isPolishing = true;
+        this.polishingProgress = 0;
+        this.currentBillet.position.copy(this.polishingStation.position);
+        this.currentBillet.position.y += 0.5;
+        this.showFeedback('Polishing... Hold P to continue');
+    }
+
+    updatePolishing(delta) {
+        if (!this.isPolishing || !this.currentBillet) return;
+
+        // Must hold P key to polish
+        if (!this.keys.p) return;
+
+        const data = this.currentBillet.userData;
+
+        // Polishing progress - EXTREMELY sensitive to fatigue
+        const fatigueMultiplier = Math.max(0.1, 1.0 - this.fatigue);
+        this.polishingProgress += delta * 0.15 * fatigueMultiplier; // Takes ~7 seconds at optimal
+
+        if (this.polishingProgress < 1.0) {
+            // Polishing improves surface quality
+            // High fatigue causes mistakes
+            if (this.fatigue > 0.7 && Math.random() < 0.05) {
+                data.defects += 0.01;
+                this.showFeedback('Slip! Too fatigued');
+            }
+        } else {
+            // Polishing complete
+            this.isPolishing = false;
+            this.polishingProgress = 0;
+
+            // Apply polishing bonus - raises quality ceiling
+            data.polishLevel = (data.polishLevel || 0) + 1;
+
+            // Small quality boost (2-5% depending on fatigue)
+            const qualityBoost = 0.02 + (0.03 * (1.0 - this.fatigue));
+            data.shapeProgress += qualityBoost;
+
+            this.showFeedback('Polishing complete');
+            this.playSuccessSound();
+
+            // Return billet to anvil area
+            this.currentBillet.position.set(0, 1.15, 0);
+            this.billetAnvilLocked = true;
+        }
+
+        // Polishing is less tiring than grinding
+        this.fatigue = Math.min(1.0, this.fatigue + delta * 0.005);
     }
 
     createGrindingStation() {
@@ -1281,14 +1938,33 @@ class ForgeHands {
             z-index: 100;
         `;
 
-        let html = `<div>Selected Weapon: ${this.selectedWeaponType}</div>`;
+        let html = `<div>Weapon: ${this.selectedWeaponType}</div>`;
+        html += `<div>Metal: ${this.selectedMetalType || 'iron'}</div>`;
         html += `<div>Money: $${this.money}</div>`;
         html += `<div>Inventory: ${this.inventory.length} weapons</div>`;
+
+        // Show grinding/polishing status
+        if (this.isGrinding) {
+            html += `<div style="color:#ff6644">GRINDING: ${(this.grindingProgress * 100).toFixed(0)}%</div>`;
+        }
+        if (this.isPolishing) {
+            html += `<div style="color:#66aaff">POLISHING: ${(this.polishingProgress * 100).toFixed(0)}%</div>`;
+        }
+
+        // Show unlock status
+        if (this.grindingUnlocked) {
+            html += `<div style="color:#66ff66; font-size:10px;">Grinding/Polishing: UNLOCKED</div>`;
+        } else {
+            html += `<div style="color:#666; font-size:10px;">Rare weapons forged: ${this.rareWeaponsForged}/5</div>`;
+        }
+
         html += `<br>`;
-        html += `<div style="font-size:12px; opacity:0.7;">`;
-        html += `R - Change Weapon | F - Finish | Q - Quench<br>`;
-        html += `I - Inventory | WASD - Move | Space - Jump<br>`;
-        html += `LMB - Left Hand | RMB - Right Hand`;
+        html += `<div style="font-size:11px; opacity:0.7;">`;
+        html += `R - Weapon | M - Metal | N - New Billet<br>`;
+        html += `F - Finish | Q - Quench | I - Inventory<br>`;
+        html += `G - Grind (hold) | P - Polish (hold)<br>`;
+        html += `WASD - Move | Space - Jump<br>`;
+        html += `LMB/RMB - Hands | Release - Camera`;
         html += `</div>`;
 
         hud.innerHTML = html;
@@ -1297,6 +1973,317 @@ class ForgeHands {
 
     updateHUD() {
         this.showHUD();
+    }
+
+    // ========== BILLET MANAGEMENT ==========
+    spawnNewBillet() {
+        // Remove current billet if exists
+        if (this.currentBillet) {
+            this.scene.remove(this.currentBillet);
+            const index = this.physicsObjects.indexOf(this.currentBillet);
+            if (index > -1) this.physicsObjects.splice(index, 1);
+            this.currentBillet = null;
+            this.billetAnvilLocked = false;
+        }
+
+        const metalType = this.selectedMetalType || 'iron';
+        this.createBillet(metalType);
+        this.showFeedback(`New ${metalType} billet created`);
+    }
+
+    cycleMetalType() {
+        const metals = Object.keys(this.metalTypes);
+        const currentIndex = metals.indexOf(this.selectedMetalType || 'iron');
+        const nextIndex = (currentIndex + 1) % metals.length;
+        this.selectedMetalType = metals[nextIndex];
+        this.showFeedback(`Metal: ${this.selectedMetalType}`);
+    }
+
+    // ========== WEAPON MODEL GENERATION ==========
+    createWeaponModel(weaponType, rarity) {
+        // Generate unique weapon models based on type and rarity
+        const group = new THREE.Group();
+        const rarityIndex = this.rarities.indexOf(rarity);
+        const qualityColor = this.getWeaponColor(rarityIndex);
+
+        const bladeMaterial = new THREE.MeshStandardMaterial({
+            color: qualityColor,
+            metalness: 0.9,
+            roughness: 0.2 - (rarityIndex * 0.02)
+        });
+
+        const handleMaterial = new THREE.MeshStandardMaterial({
+            color: 0x4a3020,
+            roughness: 0.7
+        });
+
+        // Generate different shapes based on weapon type
+        switch (weaponType) {
+            case 'Dagger':
+                this.buildDaggerModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            case 'Short Sword':
+            case 'Long Sword':
+                this.buildSwordModel(group, bladeMaterial, handleMaterial, rarityIndex, weaponType === 'Long Sword' ? 1.5 : 1.0);
+                break;
+            case 'Greatsword':
+                this.buildSwordModel(group, bladeMaterial, handleMaterial, rarityIndex, 2.0);
+                break;
+            case 'Axe':
+                this.buildAxeModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            case 'War Hammer':
+                this.buildWarHammerModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            case 'Spear':
+                this.buildSpearModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            case 'Mace':
+                this.buildMaceModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            case 'Halberd':
+                this.buildHalberdModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            case 'Curved Blade':
+                this.buildCurvedBladeModel(group, bladeMaterial, handleMaterial, rarityIndex);
+                break;
+            default:
+                this.buildSwordModel(group, bladeMaterial, handleMaterial, rarityIndex, 1.0);
+        }
+
+        return group;
+    }
+
+    getWeaponColor(rarityIndex) {
+        const colors = [
+            0x5a5a5a,  // Crude - dull gray
+            0x7a7a7a,  // Common - gray
+            0x8a8a9a,  // Fine - silver-gray
+            0x6a9aca,  // Rare - blue steel
+            0x9a6aca,  // Superior - purple steel
+            0xca9a6a,  // Masterwork - golden
+            0xffffff   // Legendary - white/bright
+        ];
+        return colors[Math.min(rarityIndex, colors.length - 1)];
+    }
+
+    buildDaggerModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Blade
+        const blade = new THREE.Mesh(
+            new THREE.BoxGeometry(0.02 + rarityIndex * 0.002, 0.15, 0.01),
+            bladeMaterial
+        );
+        blade.position.y = 0.1;
+        group.add(blade);
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.015, 0.08, 8),
+            handleMaterial
+        );
+        handle.position.y = -0.02;
+        group.add(handle);
+
+        // Guard (varies by rarity)
+        if (rarityIndex >= 2) {
+            const guard = new THREE.Mesh(
+                new THREE.BoxGeometry(0.04, 0.01, 0.02),
+                bladeMaterial
+            );
+            guard.position.y = 0.02;
+            group.add(guard);
+        }
+    }
+
+    buildSwordModel(group, bladeMaterial, handleMaterial, rarityIndex, lengthMultiplier) {
+        // Blade
+        const bladeLength = 0.3 * lengthMultiplier;
+        const blade = new THREE.Mesh(
+            new THREE.BoxGeometry(0.03 + rarityIndex * 0.003, bladeLength, 0.008),
+            bladeMaterial
+        );
+        blade.position.y = bladeLength / 2 + 0.05;
+        group.add(blade);
+
+        // Handle
+        const handleLength = 0.1 * lengthMultiplier;
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.018, handleLength, 8),
+            handleMaterial
+        );
+        handle.position.y = -handleLength / 2;
+        group.add(handle);
+
+        // Guard
+        const guard = new THREE.Mesh(
+            new THREE.BoxGeometry(0.08 + rarityIndex * 0.01, 0.015, 0.02),
+            bladeMaterial
+        );
+        guard.position.y = 0.03;
+        group.add(guard);
+
+        // Pommel (higher rarity)
+        if (rarityIndex >= 3) {
+            const pommel = new THREE.Mesh(
+                new THREE.SphereGeometry(0.02, 8, 8),
+                bladeMaterial
+            );
+            pommel.position.y = -handleLength - 0.02;
+            group.add(pommel);
+        }
+    }
+
+    buildAxeModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Axe head
+        const head = new THREE.Mesh(
+            new THREE.BoxGeometry(0.12 + rarityIndex * 0.01, 0.1, 0.02),
+            bladeMaterial
+        );
+        head.position.set(0.05, 0.15, 0);
+        group.add(head);
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 0.4, 8),
+            handleMaterial
+        );
+        handle.position.y = -0.05;
+        group.add(handle);
+    }
+
+    buildWarHammerModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Hammer head
+        const head = new THREE.Mesh(
+            new THREE.BoxGeometry(0.08, 0.06, 0.1 + rarityIndex * 0.01),
+            bladeMaterial
+        );
+        head.position.y = 0.2;
+        group.add(head);
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.025, 0.35, 8),
+            handleMaterial
+        );
+        handle.position.y = -0.02;
+        group.add(handle);
+    }
+
+    buildSpearModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Spear head
+        const head = new THREE.Mesh(
+            new THREE.ConeGeometry(0.02 + rarityIndex * 0.002, 0.15, 4),
+            bladeMaterial
+        );
+        head.position.y = 0.45;
+        group.add(head);
+
+        // Shaft
+        const shaft = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.015, 0.8, 8),
+            handleMaterial
+        );
+        shaft.position.y = 0;
+        group.add(shaft);
+    }
+
+    buildMaceModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Mace head
+        const head = new THREE.Mesh(
+            new THREE.SphereGeometry(0.05 + rarityIndex * 0.005, 8, 8),
+            bladeMaterial
+        );
+        head.position.y = 0.2;
+        group.add(head);
+
+        // Spikes (higher rarity)
+        if (rarityIndex >= 2) {
+            for (let i = 0; i < 6; i++) {
+                const spike = new THREE.Mesh(
+                    new THREE.ConeGeometry(0.01, 0.03, 4),
+                    bladeMaterial
+                );
+                const angle = (i / 6) * Math.PI * 2;
+                spike.position.set(Math.cos(angle) * 0.05, 0.2, Math.sin(angle) * 0.05);
+                spike.rotation.z = -Math.PI / 2 * Math.cos(angle);
+                spike.rotation.x = -Math.PI / 2 * Math.sin(angle);
+                group.add(spike);
+            }
+        }
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.02, 0.25, 8),
+            handleMaterial
+        );
+        handle.position.y = 0;
+        group.add(handle);
+    }
+
+    buildHalberdModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Axe blade
+        const blade = new THREE.Mesh(
+            new THREE.BoxGeometry(0.1, 0.15, 0.015),
+            bladeMaterial
+        );
+        blade.position.set(0.04, 0.5, 0);
+        group.add(blade);
+
+        // Spike
+        const spike = new THREE.Mesh(
+            new THREE.ConeGeometry(0.015, 0.12, 4),
+            bladeMaterial
+        );
+        spike.position.y = 0.65;
+        group.add(spike);
+
+        // Shaft
+        const shaft = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.02, 0.02, 1.0, 8),
+            handleMaterial
+        );
+        shaft.position.y = 0;
+        group.add(shaft);
+    }
+
+    buildCurvedBladeModel(group, bladeMaterial, handleMaterial, rarityIndex) {
+        // Curved blade using custom geometry
+        const curve = new THREE.QuadraticBezierCurve3(
+            new THREE.Vector3(0, 0.05, 0),
+            new THREE.Vector3(0.05, 0.2, 0),
+            new THREE.Vector3(0, 0.35, 0)
+        );
+        const points = curve.getPoints(10);
+        const bladeShape = new THREE.Shape();
+        bladeShape.moveTo(0, 0);
+        bladeShape.lineTo(0.02, 0);
+        bladeShape.lineTo(0.015, 0.3);
+        bladeShape.lineTo(0, 0.3);
+        bladeShape.lineTo(0, 0);
+
+        const blade = new THREE.Mesh(
+            new THREE.BoxGeometry(0.025, 0.3, 0.008),
+            bladeMaterial
+        );
+        blade.position.y = 0.2;
+        blade.rotation.z = 0.15; // Slight curve effect
+        group.add(blade);
+
+        // Handle
+        const handle = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.015, 0.018, 0.1, 8),
+            handleMaterial
+        );
+        handle.position.y = 0;
+        group.add(handle);
+
+        // Guard
+        const guard = new THREE.Mesh(
+            new THREE.BoxGeometry(0.05, 0.01, 0.015),
+            bladeMaterial
+        );
+        guard.position.y = 0.05;
+        group.add(guard);
     }
 }
 
